@@ -66,21 +66,14 @@ export default function DriverDashboard() {
     });
 
     setTimeout(() => {
-      // Simulate finding or not finding
-      const found = Math.random() > 0.3;
-      if (found && routes.length > 0) {
-        const route = routes[Math.floor(Math.random() * routes.length)];
-        const bus = route.busNumbers?.[0] || 'MH12-9401';
-        const rssi = -(55 + Math.floor(Math.random() * 25));
-        const dist = Math.pow(10, (-59 - rssi) / 25).toFixed(1);
-        setBleResult({ busNumber: bus, route, rssi, distance: dist });
-        setScanLog(prev => [...prev, `✓ Found: ${bus} (${rssi} dBm, ~${dist}m away)`]);
-        setPhase('found');
-      } else {
-        setScanLog(prev => [...prev, '✗ No TrackBus transponder detected.', 'Use manual search to continue.']);
-        setPhase('manual');
-        setShowManual(true);
-      }
+      // Always simulate not finding any Bluetooth devices to force manual search testing
+      setScanLog(prev => [
+        ...prev, 
+        '✗ No Bluetooth transponder device found.', 
+        'Please select your bus manually to start the trip.'
+      ]);
+      setPhase('manual');
+      setShowManual(true);
     }, 3500);
   };
 
