@@ -2,8 +2,19 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import axios from 'axios';
 
 // Configure dynamic API baseURL for production environments (e.g. Render, Railway)
-const apiUrl = import.meta.env.VITE_API_URL || '';
+let apiUrl = import.meta.env.VITE_API_URL || '';
+
+// Fallback to VITE_SOCKET_URL if VITE_API_URL is not set (and is not localhost)
+if (!apiUrl && import.meta.env.VITE_SOCKET_URL) {
+  const socketUrl = import.meta.env.VITE_SOCKET_URL;
+  if (!socketUrl.includes('localhost') && !socketUrl.includes('127.0.0.1')) {
+    apiUrl = socketUrl;
+  }
+}
+
 if (apiUrl) {
+  // Convert ws:// or wss:// protocols to http:// or https:// for Axios
+  apiUrl = apiUrl.replace(/^wss:\/\//i, 'https://').replace(/^ws:\/\//i, 'http://');
   axios.defaults.baseURL = apiUrl;
 }
 
