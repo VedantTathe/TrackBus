@@ -1,0 +1,12 @@
+{
+  "name": "TrackBus",
+  "short_name": "TrackBus",
+  "description": "Real-time bus tracking",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1a56db",
+  "icons": [
+    { "src": "/bus.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

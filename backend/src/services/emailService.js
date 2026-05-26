@@ -1,0 +1,115 @@
+import nodemailer from 'nodemailer';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+const EMAIL_HOST = process.env.EMAIL_HOST || 'smtp.gmail.com';
+const EMAIL_PORT = Number(process.env.EMAIL_PORT || 587);
+const EMAIL_USER = process.env.EMAIL_USER;
+const EMAIL_PASS = process.env.EMAIL_PASS;
+const EMAIL_FROM = process.env.EMAIL_FROM || `"TrackBus Transit" <${EMAIL_USER}>`;
+
+let transporter = null;
+
+// Initialize Transporter if credentials are configured
+if (EMAIL_USER && EMAIL_PASS) {
+  try {
+    transporter = nodemailer.createTransport({
+      host: EMAIL_HOST,
+      port: EMAIL_PORT,
+      secure: EMAIL_PORT === 465, // True for 465, false for 587/others
+      auth: {
+        user: EMAIL_USER,
+        pass: EMAIL_PASS,
+      },
+    });
+    console.log('📧 ====================================================');
+    console.log('📧 SMTP Email Transporter Successfully Initialized!');
+    console.log(`📧 User: ${EMAIL_USER} via ${EMAIL_HOST}:${EMAIL_PORT}`);
+    console.log('📧 ====================================================');
+  } catch (err) {
+    console.error('❌ Failed to construct SMTP nodemailer transporter:', err.message);
+  }
+} else {
+  console.log('📧 ====================================================');
+  console.log('⚠️  SMTP Email credentials unconfigured or missing in .env');
+  console.log('⚠️  Engaging fallback stdout console logging mode.');
+  console.log('📧 ====================================================');
+}
+
+/**
+ * Sends a generic HTML & text email with resilient console fallback.
+ * @param {string} to recipient email address
+ * @param {string} subject email subject header
+ * @param {string} text plain text body
+ * @param {string} html html formatted body
+ */
+export const sendEmail = async ({ to, subject, text, html }) => {
+  if (transporter) {
+    try {
+      const info = await transporter.sendMail({
+        from: EMAIL_FROM,
+        to,
+        subject,
+        text,
+        html,
+      });
+      console.log(`📧 Email delivered successfully. Message ID: ${info.messageId}`);
+      return info;
+    } catch (error) {
+      console.error('❌ SMTP delivery failed, falling back to console:', error.message);
+    }
+  }
+
+  // Print email mock directly to console for quick developer verification
+  console.log('\n📧 ============= [CONSOLE EMAIL FALLBACK] =============');
+  console.log(`📅 Timestamp: ${new Date().toISOString()}`);
+  console.log(`📨 To:        ${to}`);
+  console.log(`📌 Subject:   ${subject}`);
+  console.log('📝 --- Plain Body ---');
+  console.log(text);
+  console.log('🌐 --- HTML Body ---');
+  console.log(html);
+  console.log('========================================================\n');
+  return { isMockLog: true, timestamp: new Date() };
+};
+
+/**
+ * Sends a pre-formatted verification OTP code.
+ * @param {string} email recipient address
+ * @param {string} otp 4-6 digit numeric OTP
+ */
+export const sendOTPEmail = async (email, otp) => {
+  const subject = `${otp} is your TrackBus Verification Code`;
+  const text = `Greetings!\n\nYour TrackBus verification code is: ${otp}\nThis code is valid for 10 minutes. Please do not share it with anyone.`;
+  const html = `
+    <div style="font-family: 'Inter', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #f1f5f9; border-radius: 16px; background-color: #ffffff;">
+      <div style="text-align: center; margin-bottom: 24px;">
+        <h2 style="font-weight: 900; color: #dc2626; margin: 0; font-size: 24px; letter-spacing: -0.5px;">TrackBus</h2>
+        <span style="font-size: 10px; font-weight: 800; text-transform: uppercase; color: #94a3b8; letter-spacing: 1.5px;">Smart Transit Verification</span>
+      </div>
+      
+      <p style="font-size: 14px; line-height: 1.6; color: #334155; font-weight: 500;">
+        Hello,
+      </p>
+      
+      <p style="font-size: 14px; line-height: 1.6; color: #334155; font-weight: 500;">
+        You are verifying your account details on the TrackBus public transport analytics platform. Use the single-use verification code below:
+      </p>
+      
+      <div style="text-align: center; margin: 32px 0; background-color: #fcf6f5; border: 1.5px dashed #f5d0c5; border-radius: 12px; padding: 16px;">
+        <span style="font-family: 'Outfit', Helvetica, Arial, sans-serif; font-size: 32px; font-weight: 950; letter-spacing: 6px; color: #dc2626;">${otp}</span>
+      </div>
+      
+      <p style="font-size: 12px; line-height: 1.5; color: #64748b; font-weight: 600;">
+        * Note: This code is valid for 10 minutes. If you did not initiate this request, please disregard this email.
+      </p>
+      
+      <div style="border-t: 1px solid #f1f5f9; margin-top: 32px; padding-top: 16px; text-align: center; font-size: 10px; color: #94a3b8; font-weight: 700;">
+        © 2026 TrackBus Transit Inc. • Seattle & Pune Flow Networks
+      </div>
+    </div>
+  `;
+
+  return await sendEmail({ to: email, subject, text, html });
+};
