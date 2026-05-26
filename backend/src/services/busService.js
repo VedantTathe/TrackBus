@@ -77,21 +77,25 @@ export const SEED_ROUTES = [
     destination: 'Kolhapur',
     busNumbers: ['MH10-8899'],
     stops: [
-      { name: 'Sangli Main ST', arrivalTime: '07:20', departureTime: '07:30', lat: 16.8524, lng: 74.5815, sequence: 1 },
-      { name: 'Vishrambag', arrivalTime: '07:38', departureTime: '07:40', lat: 16.8437, lng: 74.6021, sequence: 2 },
-      { name: 'Ankali Phata', arrivalTime: '07:48', departureTime: '07:50', lat: 16.8201, lng: 74.6135, sequence: 3 },
-      { name: 'Jaysingpur', arrivalTime: '08:05', departureTime: '08:10', lat: 16.7865, lng: 74.5583, sequence: 4 },
-      { name: 'Hatkanangale', arrivalTime: '08:25', departureTime: '08:30', lat: 16.7483, lng: 74.4447, sequence: 5 },
-      { name: 'Shiroli Phata', arrivalTime: '08:48', departureTime: '08:50', lat: 16.7214, lng: 74.2982, sequence: 6 },
-      { name: 'Kolhapur Central ST', arrivalTime: '09:05', departureTime: null, lat: 16.7050, lng: 74.2433, sequence: 7 }
+      { name: 'Sangli Main ST', arrivalTime: '10:40', departureTime: '10:50', lat: 16.8524, lng: 74.5815, sequence: 1 },
+      { name: 'Vishrambag', arrivalTime: '10:58', departureTime: '11:00', lat: 16.8437, lng: 74.6021, sequence: 2 },
+      { name: 'Ankali Phata', arrivalTime: '11:10', departureTime: '11:12', lat: 16.8201, lng: 74.6135, sequence: 3 },
+      { name: 'Miraj ST Stand', arrivalTime: '11:22', departureTime: '11:27', lat: 16.8256, lng: 74.6593, sequence: 4 },
+      { name: 'Jaysingpur', arrivalTime: '11:42', departureTime: '11:47', lat: 16.7865, lng: 74.5583, sequence: 5 },
+      { name: 'Hatkanangale', arrivalTime: '12:02', departureTime: '12:07', lat: 16.7483, lng: 74.4447, sequence: 6 },
+      { name: 'Shiroli Phata', arrivalTime: '12:25', departureTime: '12:27', lat: 16.7214, lng: 74.2982, sequence: 7 },
+      { name: 'Uchgaon', arrivalTime: '12:35', departureTime: '12:37', lat: 16.7088, lng: 74.2694, sequence: 8 },
+      { name: 'Kolhapur Central ST', arrivalTime: '12:48', departureTime: null, lat: 16.7050, lng: 74.2433, sequence: 9 }
     ],
     pathCoordinates: [
       [16.8524, 74.5815],
       [16.8437, 74.6021],
       [16.8201, 74.6135],
+      [16.8256, 74.6593],
       [16.7865, 74.5583],
       [16.7483, 74.4447],
       [16.7214, 74.2982],
+      [16.7088, 74.2694],
       [16.7050, 74.2433]
     ]
   }

@@ -179,7 +179,9 @@ export default function DriverDashboard() {
     r.routeNumber?.includes(manualSearch) ||
     r.busNumbers?.some(b => b.toLowerCase().includes(manualSearch.toLowerCase())) ||
     r.source?.toLowerCase().includes(manualSearch.toLowerCase()) ||
-    r.destination?.toLowerCase().includes(manualSearch.toLowerCase())
+    r.destination?.toLowerCase().includes(manualSearch.toLowerCase()) ||
+    r.startPoint?.toLowerCase().includes(manualSearch.toLowerCase()) ||
+    r.endPoint?.toLowerCase().includes(manualSearch.toLowerCase())
   );
 
   return (
