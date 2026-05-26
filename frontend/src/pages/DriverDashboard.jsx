@@ -17,8 +17,8 @@ const CROWD_OPTIONS = [
 export default function DriverDashboard() {
   const { user, logout } = useAuth();
 
-  // State machine: idle → scanning → confirm → online
-  const [phase, setPhase] = useState('idle'); // idle | scanning | found | manual | online
+  // State machine: manual (select your bus) is now the default starting phase
+  const [phase, setPhase] = useState('manual'); // idle | scanning | found | manual | online
   const [routes, setRoutes] = useState([]);
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [busNumber, setBusNumber] = useState('');
@@ -27,7 +27,7 @@ export default function DriverDashboard() {
   // BLE scan state
   const [scanLog, setScanLog] = useState([]);
   const [bleResult, setBleResult] = useState(null); // { busNumber, routeId, rssi, distance }
-  const [showManual, setShowManual] = useState(false);
+  const [showManual, setShowManual] = useState(true); // Start with manual search active
   const [manualSearch, setManualSearch] = useState('');
 
   // Live tracking state
@@ -307,6 +307,12 @@ export default function DriverDashboard() {
               <button className="btn btn-primary btn-full mt-2" disabled={!selectedRoute || !busNumber} onClick={startManual} style={{ marginTop: 14 }}>
                 <Play size={15} /> Start Trip
               </button>
+
+              <div style={{ textAlign: 'center', marginTop: 14, paddingTop: 10, borderTop: '1px dashed var(--border)' }}>
+                <button className="btn btn-ghost btn-sm btn-full" onClick={() => { setPhase('idle'); setShowManual(false); }} style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                  <Bluetooth size={12} style={{ marginRight: 4 }} /> Or Scan via Bluetooth transponder
+                </button>
+              </div>
             </div>
           </div>
         )}
