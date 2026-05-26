@@ -5,13 +5,18 @@ import mongoose from 'mongoose';
  * to fail over to local mock mode quickly if DB is offline.
  */
 export const connectDB = async () => {
-  const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/trackbus';
+  const MONGODB_URI = process.env.MONGODB_URI;
   
-  console.log(`🔌 Attempting connection to MongoDB at: ${MONGODB_URI}`);
+  if (!MONGODB_URI) {
+    console.error('❌ MONGODB_URI is not defined in the environment variables!');
+    return false;
+  }
+  
+  console.log('🔌 Attempting connection to MongoDB Atlas...');
   
   try {
     const conn = await mongoose.connect(MONGODB_URI, {
-      serverSelectionTimeoutMS: 3000
+      serverSelectionTimeoutMS: 15000
     });
     console.log('========================================================');
     console.log(`🎉 MongoDB Connected: ${conn.connection.host}`);
