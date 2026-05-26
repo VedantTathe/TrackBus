@@ -1,6 +1,12 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import axios from 'axios';
 
+// Configure dynamic API baseURL for production environments (e.g. Render, Railway)
+const apiUrl = import.meta.env.VITE_API_URL || '';
+if (apiUrl) {
+  axios.defaults.baseURL = apiUrl;
+}
+
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
