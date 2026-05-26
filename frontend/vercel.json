@@ -1,8 +1,6 @@
 {
-  "rewrites": [
-    {
-      "source": "/((?!assets/|manifest.json|bus.svg|favicon.ico).*)",
-      "destination": "/index.html"
-    }
+  "routes": [
+    { "handle": "filesystem" },
+    { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
