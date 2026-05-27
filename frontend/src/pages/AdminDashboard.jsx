@@ -208,6 +208,24 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleChangePassword = async () => {
+    if (!form.currentPassword || !form.newPassword) return setError('Fill all fields');
+    setSaving(true);
+    try {
+      await axios.put('/api/auth/change-password', {
+        currentPassword: form.currentPassword,
+        newPassword: form.newPassword
+      });
+      setSuccess('Password updated successfully');
+      closeModal();
+    } catch (e) {
+      setError(e.response?.data?.message || 'Error changing password');
+    } finally {
+      setSaving(false);
+      setTimeout(() => setSuccess(''), 3000);
+    }
+  };
+
   const CROWD_LABELS = { 1: 'Empty', 2: 'Seats Avail.', 3: 'Standing', 4: 'Full' };
 
   // --- STEP: LOGIN ---
@@ -368,6 +386,7 @@ export default function AdminDashboard() {
           <span className="topbar-logo-text">Admin</span>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button className="btn btn-ghost" onClick={() => openModal('changePassword')} style={{ padding: 8, fontSize: '0.8rem', fontWeight: 600 }}>Change Password</button>
           <button className="btn btn-ghost" onClick={loadAll} style={{ padding: 8 }}><RefreshCw size={15} /></button>
           <button
             className="btn btn-ghost"
@@ -581,12 +600,23 @@ export default function AdminDashboard() {
               <h3 className="modal-title" style={{ margin: 0 }}>
                 {modal.type === 'bus' ? (modal.data._id ? 'Edit Bus' : 'New Bus')
                   : modal.type === 'route' ? (modal.data._id ? 'Edit Route' : 'New Route')
+                  : modal.type === 'changePassword' ? 'Change Password'
                   : 'Assign Driver'}
               </h3>
               <button className="btn btn-ghost" onClick={closeModal} style={{ padding: 4 }}><X size={16} /></button>
             </div>
 
             {error && <div className="alert alert-error mb-2" style={{ marginBottom: 12 }}>{error}</div>}
+
+            {modal.type === 'changePassword' && (
+              <>
+                <div className="input-group"><label className="input-label">Current Password *</label><input className="input" type="password" value={form.currentPassword || ''} onChange={e => setForm({ ...form, currentPassword: e.target.value })} placeholder="Enter current password" /></div>
+                <div className="input-group"><label className="input-label">New Password *</label><input className="input" type="password" value={form.newPassword || ''} onChange={e => setForm({ ...form, newPassword: e.target.value })} placeholder="Enter new password" /></div>
+                <button className="btn btn-primary btn-full" onClick={handleChangePassword} disabled={saving}>
+                  {saving ? <RefreshCw size={14} className="animate-spin" /> : 'Update Password'}
+                </button>
+              </>
+            )}
 
             {modal.type === 'bus' && (
               <>

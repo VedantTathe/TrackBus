@@ -14,6 +14,9 @@ router.post('/resend-otp', validateOtpRequest, resendOtp);
 // Private profile routes
 router.get('/me', protect, getProfile);
 router.get('/profile', protect, getProfile); // Backward-compatible alias for existing frontend clients
+router.put('/change-password', protect, authorize('admin', 'driver', 'passenger'), async (req, res) => {
+  import('../controllers/authController.js').then(module => module.changePassword(req, res));
+});
 
 // Private driver approval route
 router.put('/approve-driver', protect, authorize('admin'), approveDriver);

@@ -77,3 +77,15 @@ export const approveDriver = catchAsync(async (req, res, next) => {
   
   res.status(200).json(result);
 });
+
+/**
+ * @desc    Change password
+ * @route   PUT /api/auth/change-password
+ * @access  Private
+ */
+export const changePassword = catchAsync(async (req, res, next) => {
+  const { currentPassword, newPassword } = req.body;
+  const isDbConnected = req.app.get('isDbConnected');
+  const result = await authService.changePassword(req.user._id || req.user.id, currentPassword, newPassword, isDbConnected);
+  res.status(200).json(result);
+});

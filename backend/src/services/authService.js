@@ -5,7 +5,7 @@ import { AppError } from '../utils/errors.js';
 import { sendDriverApprovedEmail, sendOTPEmail, sendDriverPendingApprovalEmail } from './emailService.js';
 
 // Admin email is read from ADMIN_EMAIL env var (set in .env)
-const getAdminEmail = () => process.env.ADMIN_EMAIL || 'vedanttathe30@gmail.com';
+const getAdminEmail = () => process.env.ADMIN_EMAIL || 'admin@trackbus.com';
 const OTP_TTL_MINUTES = 10;
 
 const logOtpFlow = ({ flow, target, otp, mode = 'db' }) => {
@@ -13,11 +13,24 @@ const logOtpFlow = ({ flow, target, otp, mode = 'db' }) => {
   console.log(`🔐 OTP Flow [${flow}] [${mode}] -> ${target} | otp=${otpDisplay}`);
 };
 
-// In-memory fallback users (empty by default; no demo/bypass users)
-export const MOCK_USERS = [];
-
 export const ADMIN_LOGIN_EMAIL = getAdminEmail();
-export const ADMIN_BOOTSTRAP_PASSWORD = 'TrackBus@2026';
+export const ADMIN_BOOTSTRAP_PASSWORD = 'admin';
+
+// In-memory fallback users
+export const MOCK_USERS = [
+  {
+    _id: 'mock-admin-id',
+    name: 'Mock Admin',
+    employeeId: ADMIN_LOGIN_EMAIL,
+    phone: 'N/A',
+    password: ADMIN_BOOTSTRAP_PASSWORD,
+    role: 'admin',
+    isVerified: true,
+    isApproved: true,
+    otpCode: null,
+    otpExpires: null
+  }
+];
 
 export const ensureAdminUser = async (isDbConnected) => {
   if (!isDbConnected) return;
@@ -508,5 +521,35 @@ export const approveDriverUser = async (employeeId, isDbConnected) => {
     mockUser.isVerified = true;
     await sendDriverApprovedEmail(mockUser.employeeId, mockUser.name || 'Driver');
     return { success: true, message: `Driver ${mockUser.name} (${mockUser.employeeId}) approved successfully (Mock).` };
+  }
+};
+
+/**
+ * Change user password
+ */
+export const changePassword = async (userId, currentPassword, newPassword, isDbConnected) => {
+  if (!currentPassword || !newPassword) {
+    throw new AppError('Current password and new password are required', 400);
+  }
+
+  if (isDbConnected) {
+    const user = await User.findById(userId);
+    if (!user) throw new AppError('User not found', 404);
+
+    const isMatch = await user.matchPassword(currentPassword);
+    if (!isMatch) throw new AppError('Incorrect current password', 401);
+
+    user.password = newPassword;
+    await user.save();
+    return { success: true, message: 'Password updated successfully' };
+  } else {
+    const mockUser = MOCK_USERS.find(u => u._id === userId);
+    if (!mockUser) throw new AppError('User not found (Mock)', 404);
+
+    if (mockUser.password !== currentPassword) {
+      throw new AppError('Incorrect current password', 401);
+    }
+    mockUser.password = newPassword;
+    return { success: true, message: 'Password updated successfully (Mock)' };
   }
 };
