@@ -75,7 +75,6 @@ export default function LiveTracking() {
   const markerRef = useRef(null);
   const trailPolylineRef = useRef(null);
   const expectedPolylineRef = useRef(null);
-  const hasPrompted = useRef(false);
 
   const [trip, setTrip] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -85,7 +84,7 @@ export default function LiveTracking() {
   const [expandedGaps, setExpandedGaps] = useState({});
   // Passenger check-in and voting states
   const [inBus, setInBus] = useState(false);
-  const [showInBusModal, setShowInBusModal] = useState(false);
+  const [onBoardWarning, setOnBoardWarning] = useState(false);
   const [passengerVote, setPassengerVote] = useState(null);
   const [passengerId, setPassengerId] = useState('');
   const [hasVoted, setHasVoted] = useState(false);
@@ -121,27 +120,10 @@ export default function LiveTracking() {
         if (savedVote) setPassengerVote(Number(savedVote));
       }
     }
-
-    // Always ask "Are you on this bus?" when the tracking page loads/mounts
-    if (trip && !loading && !hasPrompted.current) {
-      hasPrompted.current = true;
-      setInBus(false);
-      setShowInBusModal(true);
-    }
-  }, [trip, loading, busId, user]);
-
-  // Close onboarding modal automatically if they are verified onboard
-  useEffect(() => {
-    if (inBus) {
-      setShowInBusModal(false);
-    }
-  }, [inBus]);
+  }, [busId, user]);
 
   const handleInBusConfirm = (ans) => {
-    if (!ans) {
-      setShowInBusModal(false);
-      return;
-    }
+    if (!ans) return;
 
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
@@ -152,10 +134,7 @@ export default function LiveTracking() {
           const busLat = trip?.currentLocation?.lat || trip?.latitude || 0;
           const busLng = trip?.currentLocation?.lng || trip?.longitude || 0;
 
-          if (busLat === 0 || busLng === 0) {
-            setShowInBusModal(false);
-            return;
-          }
+          if (busLat === 0 || busLng === 0) return;
 
           // Calculate proximity distance to the bus
           const distToBus = distanceKm(
@@ -181,9 +160,8 @@ export default function LiveTracking() {
           const isNearRoute = minDistToRoute === Number.POSITIVE_INFINITY || minDistToRoute <= 2.0;
 
           if (isNearBus && isNearRoute) {
-            // Close the prompt modal and onboard them!
-            setShowInBusModal(false);
             setInBus(true);
+            setOnBoardWarning(false);
             localStorage.setItem(`in_bus_${busId}`, 'true');
 
             // Use current passenger's verified coordinates for map showing and speedometer directly
@@ -235,20 +213,26 @@ export default function LiveTracking() {
             // Show premium success feedback popup!
             setShowContributionModal(true);
           } else {
-            // If they are not near, silently hide the modal/box completely (no red errors displayed!)
-            setShowInBusModal(false);
             setInBus(false);
             localStorage.removeItem(`in_bus_${busId}`);
+            setOnBoardWarning(true);
+            setTimeout(() => {
+              setOnBoardWarning(false);
+            }, 6000);
           }
         },
         (err) => {
           console.warn('Geolocation failed during onboarding:', err.message);
-          setShowInBusModal(false);
+          setInBus(false);
+          setOnBoardWarning(true);
+          setTimeout(() => {
+            setOnBoardWarning(false);
+          }, 6000);
         },
         { enableHighAccuracy: true, timeout: 8000 }
       );
     } else {
-      setShowInBusModal(false);
+      setInBus(false);
     }
   };
 
@@ -1004,6 +988,60 @@ export default function LiveTracking() {
             {/* Map Canvas */}
             <div ref={mapRef} className="map-container" style={{ height: '100%', borderRadius: 0 }} />
 
+            {/* Floating "Inside Bus?" Toggle Switch (Top Right Overlay - Non-Compulsory Option) */}
+            <div style={{
+              position: 'absolute',
+              top: 16,
+              right: 16,
+              zIndex: 1000,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '6px 10px',
+              borderRadius: 20,
+              background: inBus ? 'rgba(22, 163, 74, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+              backdropFilter: 'blur(10px)',
+              border: inBus ? '1.5px solid #16a34a' : '1.5px solid var(--border)',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+              transition: 'all 0.3s ease',
+              cursor: 'pointer',
+              userSelect: 'none'
+            }} onClick={() => {
+              if (inBus) {
+                handleCheckOut();
+              } else {
+                handleInBusConfirm(true);
+              }
+            }}>
+              <Bus size={14} style={{ color: inBus ? 'white' : 'var(--text-secondary)' }} />
+              <span style={{
+                fontSize: '0.72rem',
+                fontWeight: 800,
+                color: inBus ? 'white' : 'var(--text-primary)'
+              }}>
+                Inside Bus?
+              </span>
+              <div style={{
+                width: 28,
+                height: 16,
+                borderRadius: 10,
+                background: inBus ? 'rgba(255,255,255,0.3)' : 'var(--border-strong)',
+                position: 'relative',
+                transition: 'all 0.3s ease'
+              }}>
+                <div style={{
+                  width: 12,
+                  height: 12,
+                  borderRadius: '50%',
+                  background: 'white',
+                  position: 'absolute',
+                  top: 2,
+                  left: inBus ? 14 : 2,
+                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+                }} />
+              </div>
+            </div>
+
             {/* Floating Speedometer (Bottom Left Overlay) */}
             <div style={{
               position: 'absolute',
@@ -1067,6 +1105,31 @@ export default function LiveTracking() {
 
         <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           
+          {/* Proximity Failure Onboarding Warning Banner */}
+          {!inBus && onBoardWarning && isActive && (
+            <div className="alert alert-danger" style={{
+              fontSize: '0.8rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '12px 14px',
+              background: 'rgba(220, 38, 38, 0.08)',
+              borderColor: 'rgba(220, 38, 38, 0.2)',
+              borderRadius: 12,
+              color: '#dc2626',
+              fontWeight: 600,
+              boxShadow: '0 2px 8px rgba(220, 38, 38, 0.05)'
+            }}>
+              <AlertCircle size={16} style={{ color: '#dc2626' }} />
+              <div style={{ flex: 1 }}>
+                Looks like you are not inside the bus to receive fast bus updates.
+              </div>
+              <button className="btn btn-sm btn-ghost" onClick={() => setOnBoardWarning(false)} style={{ color: '#dc2626', textDecoration: 'underline', fontSize: '0.72rem', padding: 0 }}>
+                Dismiss
+              </button>
+            </div>
+          )}
+
           {/* Verified Rider Banner */}
           {inBus && isActive && (
             <div className="alert alert-success" style={{
@@ -1473,35 +1536,6 @@ export default function LiveTracking() {
         </div>
       )}
 
-      {/* In-Bus Check-in Simple Slide-up Modal */}
-      {showInBusModal && (
-        <div className="modal-overlay" style={{ zIndex: 9999 }} onClick={() => handleInBusConfirm(false)}>
-          <div className="modal animate-slide-up" onClick={e => e.stopPropagation()} style={{ maxWidth: 400, borderRadius: '24px' }}>
-            <div className="modal-handle" />
-            <div style={{ padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 14, alignItems: 'center', textAlign: 'center' }}>
-              <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(29, 78, 216, 0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Bus size={32} style={{ color: 'var(--accent)' }} />
-              </div>
-              <div>
-                <h3 style={{ margin: '0 0 6px 0', fontSize: '1.15rem', fontWeight: 800 }}>
-                  Are you currently on this bus?
-                </h3>
-                <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
-                  Verify your ride using secure location telemetry to share fallback coordinates and participate in occupancy voting.
-                </p>
-              </div>
-              <div style={{ display: 'flex', gap: 10, width: '100%', marginTop: 8 }}>
-                <button className="btn btn-ghost" style={{ flex: 1, padding: '12px', border: '1px solid var(--border)', borderRadius: 12, fontWeight: 700 }} onClick={() => handleInBusConfirm(false)}>
-                  No, waiting
-                </button>
-                <button className="btn btn-primary" style={{ flex: 1, padding: '12px', borderRadius: 12, fontWeight: 700 }} onClick={() => handleInBusConfirm(true)}>
-                  Yes, I'm onboard
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
