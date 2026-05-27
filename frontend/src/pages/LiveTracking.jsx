@@ -5,9 +5,9 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../i18n';
 import { ArrowLeft, Bus, Gauge, Clock, MapPin, RefreshCw, Navigation, AlertCircle, Check, Shield, Sparkles, Smile, Radio, Vote, User } from 'lucide-react';
 
-const CROWD_LABELS = { 1: 'Empty', 2: 'Seats Available', 3: 'Standing Room Only', 4: 'Full' };
 const CROWD_COLORS = { 1: '#16a34a', 2: '#1d4ed8', 3: '#d97706', 4: '#dc2626' };
 
 function CrowdBar({ level = 1 }) {
@@ -69,6 +69,15 @@ export default function LiveTracking() {
   const navigate = useNavigate();
   const { socket } = useSocket();
   const { user, logout } = useAuth();
+  const { t, toggleLanguage } = useLanguage();
+
+  // Translated crowd labels (reactive to language changes)
+  const CROWD_LABELS = useMemo(() => ({
+    1: t('tracking.crowd.empty'),
+    2: t('tracking.crowd.seats'),
+    3: t('tracking.crowd.standing'),
+    4: t('tracking.crowd.full')
+  }), [t]);
   
   const mapRef = useRef(null);
   const mapInstance = useRef(null);
@@ -1050,10 +1059,29 @@ export default function LiveTracking() {
           </div>
         </div>
         
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span className={`badge ${isActive ? 'badge-green' : 'badge-gray'}`} style={{ fontSize: '0.72rem' }}>
             {isActive ? <><span className="live-dot" style={{ width: 5, height: 5 }} />Live Tracking</> : 'Completed'}
           </span>
+          {/* Language Toggle */}
+          <button
+            onClick={toggleLanguage}
+            style={{
+              background: 'transparent',
+              border: '1px solid var(--border)',
+              borderRadius: 20,
+              padding: '3px 10px',
+              fontSize: '0.68rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              color: 'var(--text-secondary)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 3
+            }}
+          >
+            🌐 {t('lang.toggle')}
+          </button>
           <button className="btn btn-ghost" onClick={() => navigate('/profile')} style={{ padding: 8 }}>
             <User size={16} />
           </button>
@@ -1107,7 +1135,7 @@ export default function LiveTracking() {
                 fontWeight: 800,
                 color: verifyingOnboard ? 'var(--accent)' : (inBus ? 'white' : 'var(--text-primary)')
               }}>
-                {verifyingOnboard ? 'Verifying...' : 'Inside Bus?'}
+                {verifyingOnboard ? t('tracking.btn.verify_onboard') : (inBus ? t('tracking.check_out') : t('tracking.check_in'))}
               </span>
               {!verifyingOnboard && (
                 <div style={{
@@ -1182,7 +1210,7 @@ export default function LiveTracking() {
                 animation: trip.occupancyLevel >= 3 ? 'pulse 1.5s infinite' : 'none'
               }} />
               <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
-                {CROWD_LABELS[trip.occupancyLevel] || 'Seats Available'}
+                {CROWD_LABELS[trip.occupancyLevel] || t('tracking.crowd.seats')}
               </div>
             </div>
           </div>
@@ -1212,10 +1240,10 @@ export default function LiveTracking() {
             }}>
               <AlertCircle size={16} style={{ color: '#dc2626' }} />
               <div style={{ flex: 1 }}>
-                Looks like you are not inside the bus to receive fast bus updates.
+                {t('tracking.onboard_warning')}
               </div>
               <button className="btn btn-sm btn-ghost" onClick={() => setOnBoardWarning(false)} style={{ color: '#dc2626', textDecoration: 'underline', fontSize: '0.72rem', padding: 0 }}>
-                Dismiss
+                {t('tracking.btn.close')}
               </button>
             </div>
           )}
@@ -1272,12 +1300,12 @@ export default function LiveTracking() {
               {inBus ? (
                 <>
                   <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: 0 }}>
-                    {hasVoted ? "✓ Thanks for your crowd feedback! Your contribution helps other commuters plan their transits." : "How crowded is this bus right now? Help other passengers by voting:"}
+                    {hasVoted ? t('tracking.contribution') : t('tracking.vote_subtitle')}
                   </p>
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginTop: 4 }}>
                     {[1, 2, 3, 4].map(level => {
-                      const label = { 1: 'Empty', 2: 'Seats', 3: 'Standing', 4: 'Full' }[level];
+                      const label = CROWD_LABELS[level];
                       const isSelected = passengerVote === level;
                       return (
                         <button
@@ -1328,11 +1356,11 @@ export default function LiveTracking() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <Bus size={15} style={{ color: 'var(--accent)' }} />
                 <span style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Live Stop Timeline
+                  {t('tracking.timeline_title')}
                 </span>
               </div>
               <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                Last updated: {timeSince}
+                {t('tracking.last_updated')}: {timeSince}
               </div>
             </div>
 
@@ -1575,12 +1603,10 @@ export default function LiveTracking() {
 
               <div>
                 <h3 style={{ margin: '0 0 6px 0', fontSize: '1.25rem', fontWeight: 900, color: 'var(--text-primary)' }}>
-                  Contribution Recorded!
+                  {t('tracking.contribution')}
                 </h3>
                 <p style={{ margin: 0, fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                  Thank you for contributing! This is your <strong style={{ color: 'var(--accent)', fontSize: '0.9rem' }}>
-                    {contributionCount === 1 ? '1st' : contributionCount === 2 ? '2nd' : contributionCount === 3 ? '3rd' : `${contributionCount}th`}
-                  </strong> crowd-sourced contribution today.
+                  {t('tracking.contribution_desc')}
                 </p>
                 
                 {/* Occupancy verification report block */}
@@ -1619,7 +1645,7 @@ export default function LiveTracking() {
                 style={{ padding: '12px', borderRadius: 12, cursor: 'pointer', fontWeight: 800, marginTop: 4 }}
                 onClick={() => setShowContributionModal(false)}
               >
-                Great, thanks!
+                {t('tracking.btn.close')}
               </button>
             </div>
           </div>

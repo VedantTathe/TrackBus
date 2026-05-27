@@ -1,16 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../i18n';
 import {
   Bus, Play, Square, MapPin, Gauge,
   LogOut, Navigation, Radio, Wifi, ArrowRight, RefreshCw
 } from 'lucide-react';
 
-const CROWD_OPTIONS = [
-  { val: 1, label: 'Empty', color: 'var(--green)' },
-  { val: 2, label: 'Seats Available', color: '#2563eb' },
-  { val: 3, label: 'Standing Room Only', color: 'var(--amber)' },
-  { val: 4, label: 'Full', color: 'var(--red)' },
+// CROWD_OPTIONS labels are resolved at render time using t()
+const CROWD_OPTION_DEFS = [
+  { val: 1, key: 'crowd.empty', color: 'var(--green)' },
+  { val: 2, key: 'crowd.seats', color: '#2563eb' },
+  { val: 3, key: 'crowd.standing', color: 'var(--amber)' },
+  { val: 4, key: 'crowd.full', color: 'var(--red)' },
 ];
 
 const distanceKm = (pt1, pt2) => {
@@ -30,6 +32,10 @@ const distanceKm = (pt1, pt2) => {
 
 export default function DriverDashboard() {
   const { user, logout } = useAuth();
+  const { t, toggleLanguage } = useLanguage();
+
+  // Resolve crowd options with current language
+  const CROWD_OPTIONS = CROWD_OPTION_DEFS.map(o => ({ ...o, label: t(o.key) }));
 
   const getIntermediateStops = (route) => {
     if (!route.stops || route.stops.length <= 2) return [];
@@ -618,19 +624,38 @@ export default function DriverDashboard() {
       <div className="topbar">
         <div className="topbar-logo">
           <div className="topbar-logo-icon"><Bus size={15} /></div>
-          <span className="topbar-logo-text">Driver Dashboard</span>
+          <span className="topbar-logo-text">{t('topbar.driver_dashboard')}</span>
         </div>
         
         {/* Desktop Navigation Links */}
         <div className="desktop-nav-links">
-          <button className="desktop-nav-link active" onClick={() => navigate('/driver')}>Live Session</button>
-          <button className="desktop-nav-link" onClick={logout}>Logout</button>
+          <button className="desktop-nav-link active" onClick={() => navigate('/driver')}>{t('topbar.live_session')}</button>
+          <button className="desktop-nav-link" onClick={logout}>{t('topbar.logout')}</button>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span className={`badge ${phase === 'online' ? 'badge-green' : 'badge-red'}`}>
-            {phase === 'online' ? <><Wifi size={10} />Broadcasting</> : 'Offline'}
+            {phase === 'online' ? <><Wifi size={10} />{t('topbar.broadcasting')}</> : t('topbar.offline')}
           </span>
+          {/* Language Toggle */}
+          <button
+            onClick={toggleLanguage}
+            style={{
+              background: 'var(--bg-subtle)',
+              border: '1px solid var(--border)',
+              borderRadius: 20,
+              padding: '4px 10px',
+              fontSize: '0.7rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              color: 'var(--text-secondary)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 3
+            }}
+          >
+            🌐 {t('lang.toggle')}
+          </button>
           <button className="btn btn-ghost" onClick={logout} style={{ padding: 8 }}>
             <LogOut size={15} />
           </button>
@@ -640,8 +665,8 @@ export default function DriverDashboard() {
       {/* Primary Dashboard Content Area */}
       <div className="page-content">
         <div style={{ padding: '14px 0 4px' }}>
-          <h2>Welcome back, {user?.name || 'Driver'}</h2>
-          <p style={{ fontSize: '0.8rem', marginTop: 2, color: 'var(--text-muted)' }}>Employee ID: {user?.employeeId}</p>
+          <h2>{t('driver.welcome')} {user?.name || 'Driver'}</h2>
+          <p style={{ fontSize: '0.8rem', marginTop: 2, color: 'var(--text-muted)' }}>{t('driver.employee_id')} {user?.employeeId}</p>
         </div>
 
         {/* PHASE: TRIP CREATION UI */}
@@ -650,7 +675,7 @@ export default function DriverDashboard() {
             <form onSubmit={handleStartTrip} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '20px 18px' }}>
               <h3 style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
                 <Radio size={18} style={{ color: 'var(--accent)' }} />
-                New Live Trip Session
+                {t('driver.new_trip')}
               </h3>
 
               {errorMsg && (
@@ -665,7 +690,7 @@ export default function DriverDashboard() {
 
               {/* Source Node */}
               <div>
-                <label className="label" style={{ fontWeight: 600, fontSize: '0.8rem', marginBottom: 4 }}>Trip Origin</label>
+                <label className="label" style={{ fontWeight: 600, fontSize: '0.8rem', marginBottom: 4 }}>{t('driver.label.origin')}</label>
                 <div style={{ position: 'relative' }}>
                   <input
                     className="input"
@@ -675,7 +700,7 @@ export default function DriverDashboard() {
                       if (errorMsg) setErrorMsg('');
                       if (routesError) setRoutesError('');
                     }}
-                    placeholder="Origin (e.g. Pune)"
+                    placeholder={t('driver.placeholder.origin')}
                     list="city-list"
                     required
                   />
@@ -684,7 +709,7 @@ export default function DriverDashboard() {
 
               {/* Destination Node */}
               <div>
-                <label className="label" style={{ fontWeight: 600, fontSize: '0.8rem', marginBottom: 4 }}>Trip Destination</label>
+                <label className="label" style={{ fontWeight: 600, fontSize: '0.8rem', marginBottom: 4 }}>{t('driver.label.destination')}</label>
                 <div style={{ position: 'relative' }}>
                   <input
                     className="input"
@@ -694,7 +719,7 @@ export default function DriverDashboard() {
                       if (errorMsg) setErrorMsg('');
                       if (routesError) setRoutesError('');
                     }}
-                    placeholder="Destination (e.g. Sangli)"
+                    placeholder={t('driver.placeholder.destination')}
                     list="city-list"
                     required
                   />
@@ -710,7 +735,7 @@ export default function DriverDashboard() {
               {source && destination && (
                 <div style={{ borderTop: '1px dashed var(--border)', paddingTop: 12 }}>
                   <label className="label" style={{ fontWeight: 600, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                    Route Options
+                    {t('driver.route_options')}
                   </label>
                   <button
                     type="button"
@@ -719,7 +744,7 @@ export default function DriverDashboard() {
                     onClick={handleFetchRoutes}
                     disabled={routesLoading}
                   >
-                    {routesLoading ? 'Fetching routes...' : 'Find Routes'}
+                    {routesLoading ? t('driver.btn.fetching_routes') : t('driver.btn.find_routes')}
                   </button>
 
                   {routesError && (
@@ -1109,11 +1134,11 @@ export default function DriverDashboard() {
                     >
                       {startingTrip ? (
                         <>
-                          <RefreshCw size={16} className="animate-spin" /> Starting Trip...
+                          <RefreshCw size={16} className="animate-spin" /> {t('driver.btn.starting')}
                         </>
                       ) : (
                         <>
-                          <Play size={16} /> Confirm & Start Live Trip
+                          <Play size={16} /> {t('driver.btn.start_trip')}
                         </>
                       )}
                     </button>
@@ -1339,7 +1364,7 @@ export default function DriverDashboard() {
             {/* Occupancy Selector */}
             <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Update Passenger Load (Occupancy)
+                {t('driver.occupancy.title')}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                 {CROWD_OPTIONS.map(opt => (
@@ -1373,11 +1398,11 @@ export default function DriverDashboard() {
             >
               {endingTrip ? (
                 <>
-                  <RefreshCw size={14} className="animate-spin" /> Ending Trip...
+                  <RefreshCw size={14} className="animate-spin" /> {t('driver.btn.ending')}
                 </>
               ) : (
                 <>
-                  <Square size={14} /> End Live Trip
+                  <Square size={14} /> {t('driver.btn.end_trip')}
                 </>
               )}
             </button>
@@ -1389,11 +1414,11 @@ export default function DriverDashboard() {
       <div className="bottom-nav">
         <button className="nav-item active">
           <Radio size={20} />
-          <span className="nav-item-label">Live Session</span>
+          <span className="nav-item-label">{t('topbar.live_session')}</span>
         </button>
         <button className="nav-item" onClick={logout}>
           <LogOut size={20} />
-          <span className="nav-item-label">Logout</span>
+          <span className="nav-item-label">{t('topbar.logout')}</span>
         </button>
       </div>
     </div>

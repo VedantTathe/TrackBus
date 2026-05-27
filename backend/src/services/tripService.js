@@ -636,7 +636,7 @@ export const endLiveTrip = async (tripId, isDbConnected) => {
 };
 
 /**
- * Update occupancy level for a trip
+ * Update occupancy level for a trip (DRIVER action — always takes immediate priority)
  */
 export const updateOccupancy = async (tripId, occupancyLevel, isDbConnected) => {
   const occ = Number(occupancyLevel);
@@ -644,19 +644,24 @@ export const updateOccupancy = async (tripId, occupancyLevel, isDbConnected) => 
     throw new AppError('Invalid occupancy level. Must be between 1 and 4.', 400);
   }
 
+  const now = new Date();
+
   if (isDbConnected) {
     const trip = await LiveTrip.findOne({ tripId, isActive: true });
     if (!trip) throw new AppError('Active live trip session not found', 404);
 
+    // Driver always overrides immediately — record occupancy and update priority timestamp
     trip.occupancyLevel = occ;
-    trip.lastUpdatedAt = new Date();
+    trip.driverSetOccupancy = occ;
+    trip.driverLastOccupancyUpdate = now;
+    trip.lastUpdatedAt = now;
     await trip.save();
 
     // Also update currentCrowd on physical bus for backward compatibility
     if (trip.physicalBusId) {
       await Bus.findByIdAndUpdate(trip.physicalBusId, {
         currentCrowd: occ,
-        lastUpdated: new Date()
+        lastUpdated: now
       });
     }
 
@@ -665,15 +670,18 @@ export const updateOccupancy = async (tripId, occupancyLevel, isDbConnected) => 
     const idx = MOCK_LIVETRIPS.findIndex(t => t.tripId === tripId && t.isActive);
     if (idx === -1) throw new AppError('Active live trip session not found (Mock)', 404);
 
+    // Driver always overrides immediately in mock mode too
     MOCK_LIVETRIPS[idx].occupancyLevel = occ;
-    MOCK_LIVETRIPS[idx].lastUpdatedAt = new Date();
+    MOCK_LIVETRIPS[idx].driverSetOccupancy = occ;
+    MOCK_LIVETRIPS[idx].driverLastOccupancyUpdate = now;
+    MOCK_LIVETRIPS[idx].lastUpdatedAt = now;
 
     if (MOCK_LIVETRIPS[idx].physicalBusId) {
       const busNum = MOCK_LIVETRIPS[idx].physicalBusId.busNumber;
       const mockBus = MOCK_BUSES.find(b => b.busNumber === busNum);
       if (mockBus) {
         mockBus.currentCrowd = occ;
-        mockBus.lastUpdated = new Date();
+        mockBus.lastUpdated = now;
       }
     }
 
@@ -724,8 +732,34 @@ export const getActiveDriverTrip = async (driverId, isDbConnected) => {
   }
 };
 
+// Priority window: driver's value is authoritative for 10 minutes after they set it
+const DRIVER_PRIORITY_WINDOW_MS = 10 * 60 * 1000;
+
+/**
+ * Helper: given an array of recent passenger votes, find a level that
+ * at least 2 unique passengers agree on. Returns that level or null.
+ */
+const findPassengerConsensus = (votes) => {
+  if (!votes || votes.length < 2) return null;
+  // Count votes per level
+  const tally = {};
+  for (const v of votes) {
+    tally[v.vote] = (tally[v.vote] || 0) + 1;
+  }
+  // Find any level with 2+ agreements
+  for (const [level, count] of Object.entries(tally)) {
+    if (count >= 2) return Number(level);
+  }
+  return null;
+};
+
 /**
  * Submit or update a passenger occupancy vote for a trip
+ * Priority rules:
+ *   1. If driver updated within last 10 min → save vote but do NOT change occupancyLevel
+ *   2. If driver has been silent for 10+ min:
+ *      a. 2+ passengers agree on same level → override occupancyLevel
+ *      b. Only 1 passenger voted → keep driver's last known value (driverSetOccupancy)
  */
 export const submitPassengerOccupancyVote = async (tripId, passengerId, vote, isDbConnected) => {
   const occ = Number(vote);
@@ -734,34 +768,45 @@ export const submitPassengerOccupancyVote = async (tripId, passengerId, vote, is
   }
 
   const voteTimestamp = new Date();
-  const cutoffTime = new Date(Date.now() - 15 * 60 * 1000); // 15 minutes ago
+  const now = voteTimestamp.getTime();
+  const cutoffTime = new Date(now - 15 * 60 * 1000); // 15-minute vote window
 
   if (isDbConnected) {
     const trip = await LiveTrip.findOne({ tripId, isActive: true });
     if (!trip) throw new AppError('Active live trip session not found', 404);
 
-    // Remove older votes by this passenger, or update existing, and filter by cutoff
+    // --- STEP 1: Record the vote (always, regardless of priority) ---
+    // Remove this passenger's previous vote and stale votes
     trip.passengerOccupancyVotes = (trip.passengerOccupancyVotes || []).filter(
       v => v.passengerId !== passengerId && v.timestamp >= cutoffTime
     );
+    trip.passengerOccupancyVotes.push({ passengerId, vote: occ, timestamp: voteTimestamp });
 
-    // Push new vote
-    trip.passengerOccupancyVotes.push({
-      passengerId,
-      vote: occ,
-      timestamp: voteTimestamp
-    });
-
-    // Clean up all votes older than 15 minutes
+    // Clean up any remaining stale votes
     trip.passengerOccupancyVotes = trip.passengerOccupancyVotes.filter(
       v => v.timestamp >= cutoffTime
     );
 
-    // Aggregate votes: average of all passenger votes in the last 15 minutes
-    const validVotes = trip.passengerOccupancyVotes;
-    if (validVotes.length > 0) {
-      const sum = validVotes.reduce((acc, curr) => acc + curr.vote, 0);
-      trip.occupancyLevel = Math.round(sum / validVotes.length);
+    // --- STEP 2: Determine whether passenger vote can override ---
+    const driverUpdatedAt = trip.driverLastOccupancyUpdate ? new Date(trip.driverLastOccupancyUpdate).getTime() : null;
+    const driverIsRecent = driverUpdatedAt && (now - driverUpdatedAt) < DRIVER_PRIORITY_WINDOW_MS;
+
+    if (driverIsRecent) {
+      // Driver updated recently — preserve driver's value, just save the vote record
+      console.log(`[CrowdPriority] Driver updated ${Math.round((now - driverUpdatedAt) / 1000)}s ago — passenger vote recorded but not applied.`);
+    } else {
+      // Driver has been silent for 10+ minutes — check passenger consensus
+      const consensus = findPassengerConsensus(trip.passengerOccupancyVotes);
+      if (consensus !== null) {
+        // 2+ passengers agree → override
+        trip.occupancyLevel = consensus;
+        console.log(`[CrowdPriority] 2+ passenger consensus on level ${consensus} — overriding occupancyLevel.`);
+      } else {
+        // Only 1 vote (or no majority) → keep driver's last known value
+        const fallback = trip.driverSetOccupancy || trip.occupancyLevel;
+        trip.occupancyLevel = fallback;
+        console.log(`[CrowdPriority] No passenger consensus (1 vote) — keeping driver's last value: ${fallback}.`);
+      }
     }
 
     trip.lastUpdatedAt = new Date();
@@ -782,33 +827,28 @@ export const submitPassengerOccupancyVote = async (tripId, passengerId, vote, is
     if (idx === -1) throw new AppError('Active live trip session not found (Mock)', 404);
 
     const trip = MOCK_LIVETRIPS[idx];
+    if (!trip.passengerOccupancyVotes) trip.passengerOccupancyVotes = [];
 
-    // Ensure passengerOccupancyVotes array exists
-    if (!trip.passengerOccupancyVotes) {
-      trip.passengerOccupancyVotes = [];
-    }
-
-    // Filter out old votes and existing vote from this passenger
+    // --- STEP 1: Record the vote ---
     trip.passengerOccupancyVotes = trip.passengerOccupancyVotes.filter(
       v => v.passengerId !== passengerId && new Date(v.timestamp) >= cutoffTime
     );
-
-    trip.passengerOccupancyVotes.push({
-      passengerId,
-      vote: occ,
-      timestamp: voteTimestamp
-    });
-
-    // Clean up
+    trip.passengerOccupancyVotes.push({ passengerId, vote: occ, timestamp: voteTimestamp });
     trip.passengerOccupancyVotes = trip.passengerOccupancyVotes.filter(
       v => new Date(v.timestamp) >= cutoffTime
     );
 
-    // Aggregate
-    const validVotes = trip.passengerOccupancyVotes;
-    if (validVotes.length > 0) {
-      const sum = validVotes.reduce((acc, curr) => acc + curr.vote, 0);
-      trip.occupancyLevel = Math.round(sum / validVotes.length);
+    // --- STEP 2: Apply priority logic ---
+    const driverUpdatedAt = trip.driverLastOccupancyUpdate ? new Date(trip.driverLastOccupancyUpdate).getTime() : null;
+    const driverIsRecent = driverUpdatedAt && (now - driverUpdatedAt) < DRIVER_PRIORITY_WINDOW_MS;
+
+    if (!driverIsRecent) {
+      const consensus = findPassengerConsensus(trip.passengerOccupancyVotes);
+      if (consensus !== null) {
+        trip.occupancyLevel = consensus;
+      } else {
+        trip.occupancyLevel = trip.driverSetOccupancy || trip.occupancyLevel;
+      }
     }
 
     trip.lastUpdatedAt = new Date();

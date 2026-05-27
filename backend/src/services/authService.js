@@ -2,11 +2,10 @@ import bcrypt from 'bcryptjs';
 import User from '../models/User.js';
 import { generateToken } from '../utils/generateToken.js';
 import { AppError } from '../utils/errors.js';
-import { sendDriverApprovedEmail, sendOTPEmail } from './emailService.js';
+import { sendDriverApprovedEmail, sendOTPEmail, sendDriverPendingApprovalEmail } from './emailService.js';
 
-export const ADMIN_LOGIN_EMAIL = 'vedanttathe30@gmail.com';
-export const ADMIN_BOOTSTRAP_PASSWORD = 'TrackBus@2026';
-const ADMIN_OTP_EMAIL = 'vedanttathe30@gmail.com';
+// Admin email is read from ADMIN_EMAIL env var (set in .env)
+const getAdminEmail = () => process.env.ADMIN_EMAIL || 'vedanttathe30@gmail.com';
 const OTP_TTL_MINUTES = 10;
 
 const logOtpFlow = ({ flow, target, otp, mode = 'db' }) => {
@@ -17,14 +16,17 @@ const logOtpFlow = ({ flow, target, otp, mode = 'db' }) => {
 // In-memory fallback users (empty by default; no demo/bypass users)
 export const MOCK_USERS = [];
 
+export const ADMIN_LOGIN_EMAIL = getAdminEmail();
+export const ADMIN_BOOTSTRAP_PASSWORD = 'TrackBus@2026';
+
 export const ensureAdminUser = async (isDbConnected) => {
   if (!isDbConnected) return;
 
-  const existingAdmin = await User.findOne({ employeeId: ADMIN_LOGIN_EMAIL });
+  const existingAdmin = await User.findOne({ employeeId: getAdminEmail() });
   if (!existingAdmin) {
     await User.create({
       name: 'Vedant Admin',
-      employeeId: ADMIN_LOGIN_EMAIL,
+      employeeId: getAdminEmail(),
       phone: 'N/A',
       password: ADMIN_BOOTSTRAP_PASSWORD,
       role: 'admin',
@@ -114,6 +116,13 @@ export const registerUser = async (userData, isDbConnected) => {
       };
     }
 
+    // Notify admin that a new driver needs approval
+    sendDriverPendingApprovalEmail(getAdminEmail(), {
+      name: userData.name || 'Driver',
+      employeeId: emailLower,
+      phone: userData.phone || 'N/A'
+    }).catch(err => console.error('⚠️ Admin driver-pending email failed (non-fatal):', err.message));
+
     return {
       success: true,
       message: 'Driver registration successful! Account is pending admin approval.',
@@ -168,6 +177,13 @@ export const registerUser = async (userData, isDbConnected) => {
         isMockMode: true,
       };
     }
+
+    // Notify admin that a new driver needs approval
+    sendDriverPendingApprovalEmail(getAdminEmail(), {
+      name: userData.name || 'Driver',
+      employeeId: emailLower,
+      phone: userData.phone || 'N/A'
+    }).catch(err => console.error('⚠️ Admin driver-pending email failed (non-fatal):', err.message));
 
     return {
       success: true,
@@ -279,7 +295,7 @@ export const resendOtpUser = async (employeeId, isDbConnected) => {
     user.otpExpires = otpExpires;
     await user.save();
 
-    const otpRecipient = user.role === 'admin' ? ADMIN_OTP_EMAIL : user.employeeId;
+    const otpRecipient = user.role === 'admin' ? getAdminEmail() : user.employeeId;
     logOtpFlow({ flow: `resend-${user.role || 'user'}`, target: otpRecipient, otp, mode: 'db' });
     await sendOTPEmail(otpRecipient, otp);
 
@@ -300,7 +316,7 @@ export const resendOtpUser = async (employeeId, isDbConnected) => {
     mockUser.otpCode = otp;
     mockUser.otpExpires = otpExpires;
 
-    const otpRecipient = mockUser.role === 'admin' ? ADMIN_OTP_EMAIL : mockUser.employeeId;
+    const otpRecipient = mockUser.role === 'admin' ? getAdminEmail() : mockUser.employeeId;
     logOtpFlow({ flow: `resend-${mockUser.role || 'user'}`, target: otpRecipient, otp, mode: 'mock' });
     await sendOTPEmail(otpRecipient, otp);
 
@@ -343,7 +359,7 @@ export const loginUser = async (employeeId, password, isDbConnected) => {
         token: generateToken({ id: user._id, role: user.role, name: user.name, employeeId: user.employeeId }),
       };
     } else if (user.role === 'admin') {
-      if (user.employeeId !== ADMIN_LOGIN_EMAIL) {
+      if (user.employeeId !== getAdminEmail()) {
         throw new AppError('Admin access is restricted.', 403);
       }
       const isMatch = await user.matchPassword(password);
@@ -356,8 +372,8 @@ export const loginUser = async (employeeId, password, isDbConnected) => {
       user.otpCode = otp;
       user.otpExpires = otpExpires;
       await user.save();
-      logOtpFlow({ flow: 'login-admin-2fa', target: ADMIN_OTP_EMAIL, otp, mode: 'db' });
-      await sendOTPEmail(ADMIN_OTP_EMAIL, otp);
+      logOtpFlow({ flow: 'login-admin-2fa', target: getAdminEmail(), otp, mode: 'db' });
+      await sendOTPEmail(getAdminEmail(), otp);
       return {
         requiresOtp: true,
         employeeId: user.employeeId,
@@ -402,7 +418,7 @@ export const loginUser = async (employeeId, password, isDbConnected) => {
         isMockMode: true,
       };
     } else if (mockUser.role === 'admin') {
-      if (mockUser.employeeId !== ADMIN_LOGIN_EMAIL) {
+      if (mockUser.employeeId !== getAdminEmail()) {
         throw new AppError('Admin access is restricted.', 403);
       }
       if (mockUser.password !== password) {
@@ -413,8 +429,8 @@ export const loginUser = async (employeeId, password, isDbConnected) => {
       const otpExpires = new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000);
       mockUser.otpCode = otp;
       mockUser.otpExpires = otpExpires;
-      logOtpFlow({ flow: 'login-admin-2fa', target: ADMIN_OTP_EMAIL, otp, mode: 'mock' });
-      await sendOTPEmail(ADMIN_OTP_EMAIL, otp);
+      logOtpFlow({ flow: 'login-admin-2fa', target: getAdminEmail(), otp, mode: 'mock' });
+      await sendOTPEmail(getAdminEmail(), otp);
       return {
         requiresOtp: true,
         employeeId: mockUser.employeeId,

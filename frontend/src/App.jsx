@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { SocketProvider } from './context/SocketContext';
+import { LanguageProvider } from './i18n';
 
 import Login from './pages/Login';
 import PassengerDashboard from './pages/PassengerDashboard';
@@ -30,23 +31,25 @@ const RoleRouter = () => {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <SocketProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/" element={<RoleRouter />} />
-            <Route path="/passenger" element={<ProtectedRoute allowedRoles={['passenger','driver','admin']}><PassengerDashboard /></ProtectedRoute>} />
-            <Route path="/search" element={<ProtectedRoute allowedRoles={['passenger','driver','admin']}><SearchResults /></ProtectedRoute>} />
-            <Route path="/journey/:busNumber" element={<ProtectedRoute allowedRoles={['passenger','driver','admin']}><Journey /></ProtectedRoute>} />
-            <Route path="/profile" element={<ProtectedRoute allowedRoles={['passenger','driver','admin']}><Profile /></ProtectedRoute>} />
-            <Route path="/driver" element={<ProtectedRoute allowedRoles={['driver','admin']}><DriverDashboard /></ProtectedRoute>} />
-            <Route path="/admin" element={<AdminDashboard />} />
-            <Route path="/track/:busId" element={<ProtectedRoute allowedRoles={['passenger','driver','admin']}><LiveTracking /></ProtectedRoute>} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </BrowserRouter>
-      </SocketProvider>
-    </AuthProvider>
+    <LanguageProvider>
+      <AuthProvider>
+        <SocketProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/" element={<RoleRouter />} />
+              <Route path="/passenger" element={<ProtectedRoute allowedRoles={['passenger','driver','admin']}><PassengerDashboard /></ProtectedRoute>} />
+              <Route path="/search" element={<ProtectedRoute allowedRoles={['passenger','driver','admin']}><SearchResults /></ProtectedRoute>} />
+              <Route path="/journey/:busNumber" element={<ProtectedRoute allowedRoles={['passenger','driver','admin']}><Journey /></ProtectedRoute>} />
+              <Route path="/profile" element={<ProtectedRoute allowedRoles={['passenger','driver','admin']}><Profile /></ProtectedRoute>} />
+              <Route path="/driver" element={<ProtectedRoute allowedRoles={['driver','admin']}><DriverDashboard /></ProtectedRoute>} />
+              <Route path="/admin" element={<AdminDashboard />} />
+              <Route path="/track/:busId" element={<ProtectedRoute allowedRoles={['passenger','driver','admin']}><LiveTracking /></ProtectedRoute>} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </BrowserRouter>
+        </SocketProvider>
+      </AuthProvider>
+    </LanguageProvider>
   );
 }

@@ -2,11 +2,43 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../i18n';
 import { Bus, Mail, ArrowRight, Eye, EyeOff, Loader, User, Phone, CheckCircle, Key } from 'lucide-react';
+
+// Compact language toggle pill shown in top-right of form side
+function LangToggle() {
+  const { lang, toggleLanguage, t } = useLanguage();
+  return (
+    <button
+      type="button"
+      onClick={toggleLanguage}
+      style={{
+        background: 'var(--bg-subtle)',
+        border: '1px solid var(--border)',
+        borderRadius: 20,
+        padding: '5px 14px',
+        fontSize: '0.76rem',
+        fontWeight: 700,
+        cursor: 'pointer',
+        color: 'var(--text-secondary)',
+        letterSpacing: '0.02em',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 5,
+        transition: 'all 0.18s ease'
+      }}
+      title={lang === 'mr' ? 'Switch to English' : 'मराठीत बदला'}
+    >
+      <span style={{ fontSize: '0.9rem' }}>🌐</span>
+      {t('lang.toggle')}
+    </button>
+  );
+}
 
 export default function Login() {
   const navigate = useNavigate();
   const { login } = useAuth();
+  const { t } = useLanguage();
 
   const [mode, setMode] = useState('passenger'); // passenger | driver-login | driver-register
   const [employeeId, setEmployeeId] = useState('');
@@ -188,31 +220,31 @@ export default function Login() {
               <Bus size={20} />
             </div>
             <span style={{ fontSize: '0.82rem', color: '#ffcdd2', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 800 }}>
-              Maharashtra State Road Transport Corp.
+              {t('app.tagline')}
             </span>
           </div>
 
           <h1 className="login-visual-title" style={{ fontSize: '2.1rem', fontWeight: 900, lineHeight: 1.2, marginBottom: 14 }}>
-            MSRTC Lalpari Live Tracker
+            {t('login.visual.title')}
           </h1>
           <p className="login-visual-desc" style={{ fontSize: '0.94rem', opacity: 0.9, lineHeight: 1.6, marginBottom: 32 }}>
-            Maharashtra's lifelines are now tracked in real-time. View exact vehicle coordinates, check live passenger crowd density, and view timelines for all MSRTC state highway trips in one modern dashboard.
+            {t('login.visual.desc')}
           </p>
           
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div className="login-feature-card" style={{ background: 'rgba(255, 255, 255, 0.06)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)', padding: 14, borderRadius: 12 }}>
               <div className="login-feature-icon" style={{ background: '#b71c1c' }}>🚍</div>
               <div>
-                <div style={{ fontWeight: 800, fontSize: '0.94rem' }}>Broadcasting Telemetry</div>
-                <div style={{ fontSize: '0.78rem', color: '#ffcdd2', marginTop: 2 }}>Instant live highway coordinates shared by verified drivers.</div>
+                <div style={{ fontWeight: 800, fontSize: '0.94rem' }}>{t('login.feature.broadcast')}</div>
+                <div style={{ fontSize: '0.78rem', color: '#ffcdd2', marginTop: 2 }}>{t('login.feature.broadcast_desc')}</div>
               </div>
             </div>
             
             <div className="login-feature-card" style={{ background: 'rgba(255, 255, 255, 0.06)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)', padding: 14, borderRadius: 12 }}>
               <div className="login-feature-icon" style={{ background: '#b71c1c' }}>👥</div>
               <div>
-                <div style={{ fontWeight: 800, fontSize: '0.94rem' }}>Commuter Crowd Sensing</div>
-                <div style={{ fontSize: '0.78rem', color: '#ffcdd2', marginTop: 2 }}>Verified onboard riders provide real-time bus load data.</div>
+                <div style={{ fontWeight: 800, fontSize: '0.94rem' }}>{t('login.feature.crowd')}</div>
+                <div style={{ fontSize: '0.78rem', color: '#ffcdd2', marginTop: 2 }}>{t('login.feature.crowd_desc')}</div>
               </div>
             </div>
           </div>
@@ -222,7 +254,8 @@ export default function Login() {
       {/* Form Side */}
       <div className="login-form-side" style={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh' }}>
         {/* Navbar */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '16px 24px 0' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', padding: '16px 24px 0', gap: 8 }}>
+          <LangToggle />
           {mode === 'passenger' ? (
             <button 
               type="button" 
@@ -230,7 +263,7 @@ export default function Login() {
               onClick={() => { setMode('driver-login'); setError(''); setSuccessMsg(''); }}
               style={{ borderRadius: 20, padding: '6px 16px', fontSize: '0.78rem', fontWeight: 700 }}
             >
-              Driver Portal →
+              {t('login.driver_portal')}
             </button>
           ) : (
             <button 
@@ -239,7 +272,7 @@ export default function Login() {
               onClick={() => { setMode('passenger'); setError(''); setSuccessMsg(''); }}
               style={{ borderRadius: 20, padding: '6px 16px', fontSize: '0.78rem', fontWeight: 700 }}
             >
-              ← Commuter Tracker
+              {t('login.commuter_tracker')}
             </button>
           )}
         </div>
@@ -271,23 +304,23 @@ export default function Login() {
             
             {otpStep ? (
               <>
-                <h1 style={{ fontSize: '1.6rem', fontWeight: 900, letterSpacing: '-0.03em', marginBottom: 4 }}>Verify OTP Code</h1>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.84rem' }}>Enter security verification credentials for <strong style={{ color: 'var(--text-primary)' }}>{otpTargetEmail}</strong></p>
+                <h1 style={{ fontSize: '1.6rem', fontWeight: 900, letterSpacing: '-0.03em', marginBottom: 4 }}>{t('login.title.otp')}</h1>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.84rem' }}>{t('login.subtitle.otp')} <strong style={{ color: 'var(--text-primary)' }}>{otpTargetEmail}</strong></p>
               </>
             ) : mode === 'passenger' ? (
               <>
-                <h1 style={{ fontSize: '1.6rem', fontWeight: 900, letterSpacing: '-0.03em', marginBottom: 4 }}>Lalpari Tracker</h1>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.84rem' }}>Frictionless password-less live bus tracker</p>
+                <h1 style={{ fontSize: '1.6rem', fontWeight: 900, letterSpacing: '-0.03em', marginBottom: 4 }}>{t('login.title.passenger')}</h1>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.84rem' }}>{t('login.subtitle.passenger')}</p>
               </>
             ) : mode === 'driver-login' ? (
               <>
-                <h1 style={{ fontSize: '1.6rem', fontWeight: 900, letterSpacing: '-0.03em', marginBottom: 4 }}>Driver Sign In</h1>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.84rem' }}>Broadcasting active duty telemetry</p>
+                <h1 style={{ fontSize: '1.6rem', fontWeight: 900, letterSpacing: '-0.03em', marginBottom: 4 }}>{t('login.title.driver')}</h1>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.84rem' }}>{t('login.subtitle.driver')}</p>
               </>
             ) : (
               <>
-                <h1 style={{ fontSize: '1.6rem', fontWeight: 900, letterSpacing: '-0.03em', marginBottom: 4 }}>Register Driver</h1>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.84rem' }}>Create broadcasting driver credentials</p>
+                <h1 style={{ fontSize: '1.6rem', fontWeight: 900, letterSpacing: '-0.03em', marginBottom: 4 }}>{t('login.title.register')}</h1>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.84rem' }}>{t('login.subtitle.register')}</p>
               </>
             )}
           </div>
@@ -305,7 +338,7 @@ export default function Login() {
           {otpStep && (
             <form onSubmit={handleVerifyOtp}>
               <div className="input-group">
-                <label className="input-label" style={{ fontWeight: 600 }}>6-Digit Verification Code</label>
+                <label className="input-label" style={{ fontWeight: 600 }}>{t('login.otp.label')}</label>
                 <div className="input-icon-wrapper">
                   <Key size={15} className="input-icon" />
                   <input 
@@ -315,7 +348,7 @@ export default function Login() {
                     maxLength={6}
                     value={otpVal} 
                     onChange={e => setOtpVal(e.target.value)} 
-                    placeholder="------" 
+                    placeholder={t('login.otp.placeholder')} 
                     required 
                     autoFocus 
                   />
@@ -323,7 +356,7 @@ export default function Login() {
               </div>
 
               <button type="submit" className="btn btn-primary btn-full btn-lg" disabled={loading} style={{ marginTop: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                {loading ? <Loader size={16} className="animate-spin" /> : <><span>Verify & Authenticate</span><ArrowRight size={16} /></>}
+                {loading ? <Loader size={16} className="animate-spin" /> : <><span>{t('login.btn.otp_verify')}</span><ArrowRight size={16} /></>}
               </button>
 
               <button 
@@ -332,7 +365,7 @@ export default function Login() {
                 style={{ marginTop: 12 }} 
                 onClick={() => { setOtpStep(false); setError(''); setSuccessMsg(''); }}
               >
-                ← Back to Login
+                {t('login.btn.back')}
               </button>
             </form>
           )}
@@ -341,7 +374,7 @@ export default function Login() {
           {!otpStep && mode === 'passenger' && (
             <form onSubmit={handlePassengerLogin}>
               <div className="input-group">
-                <label className="input-label" style={{ fontWeight: 600 }}>Passenger Email Address</label>
+                <label className="input-label" style={{ fontWeight: 600 }}>{t('login.label.passenger_email')}</label>
                 <div className="input-icon-wrapper">
                   <Mail size={15} className="input-icon" />
                   <input 
@@ -350,7 +383,7 @@ export default function Login() {
                     type="email" 
                     value={employeeId} 
                     onChange={e => setEmployeeId(e.target.value)} 
-                    placeholder="you@example.com" 
+                    placeholder={t('login.placeholder.passenger_email')} 
                     required 
                     autoFocus 
                   />
@@ -358,7 +391,7 @@ export default function Login() {
               </div>
 
               <button type="submit" className="btn btn-primary btn-full btn-lg" disabled={loading} style={{ marginTop: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                {loading ? <Loader size={16} className="animate-spin" /> : <><span>Start Tracking Live</span><ArrowRight size={16} /></>}
+                {loading ? <Loader size={16} className="animate-spin" /> : <><span>{t('login.btn.start_tracking')}</span><ArrowRight size={16} /></>}
               </button>
             </form>
           )}
@@ -393,7 +426,7 @@ export default function Login() {
                   }}
                   onClick={() => { setDriverLoginType('password'); setError(''); setSuccessMsg(''); }}
                 >
-                  Password Login
+                  {t('login.btn.password_login')}
                 </button>
                 <button
                   type="button"
@@ -411,12 +444,12 @@ export default function Login() {
                   }}
                   onClick={() => { setDriverLoginType('otp'); setError(''); setSuccessMsg(''); }}
                 >
-                  OTP Passkey
+                  {t('login.btn.otp_login')}
                 </button>
               </div>
 
               <div className="input-group">
-                <label className="input-label" style={{ fontWeight: 600 }}>Driver Email / Employee ID</label>
+                <label className="input-label" style={{ fontWeight: 600 }}>{t('login.label.driver_email')}</label>
                 <div className="input-icon-wrapper">
                   <Mail size={15} className="input-icon" />
                   <input 
@@ -425,7 +458,7 @@ export default function Login() {
                     type="email" 
                     value={employeeId} 
                     onChange={e => setEmployeeId(e.target.value)} 
-                    placeholder="driver@msrtc.in" 
+                    placeholder={t('login.placeholder.driver_email')} 
                     required 
                     autoFocus 
                   />
@@ -434,14 +467,14 @@ export default function Login() {
 
               {driverLoginType === 'password' && (
                 <div className="input-group">
-                  <label className="input-label" style={{ fontWeight: 600 }}>Password</label>
+                  <label className="input-label" style={{ fontWeight: 600 }}>{t('login.label.password')}</label>
                   <div className="input-icon-wrapper">
                     <input 
                       className="input" 
                       type={showPass ? 'text' : 'password'} 
                       value={password} 
                       onChange={e => setPassword(e.target.value)} 
-                      placeholder="Password" 
+                      placeholder={t('login.placeholder.password')} 
                       required 
                       style={{ paddingRight: 40 }} 
                     />
@@ -457,17 +490,17 @@ export default function Login() {
               )}
 
               <button type="submit" className="btn btn-primary btn-full btn-lg" disabled={loading} style={{ marginTop: 6 }}>
-                {loading ? <Loader size={16} className="animate-spin" /> : (driverLoginType === 'password' ? 'Driver Sign In' : 'Send Verification OTP')}
+                {loading ? <Loader size={16} className="animate-spin" /> : (driverLoginType === 'password' ? t('login.btn.driver_signin') : t('login.btn.send_otp'))}
               </button>
 
               <div style={{ marginTop: 16, textAlign: 'center', fontSize: '0.8rem' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>New MSRTC Driver? </span>
+                <span style={{ color: 'var(--text-secondary)' }}>{t('login.new_driver')} </span>
                 <button 
                   type="button" 
                   onClick={() => { setMode('driver-register'); setError(''); setSuccessMsg(''); }} 
                   style={{ background: 'none', border: 'none', color: 'var(--accent)', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
                 >
-                  Register here
+                  {t('login.register_here')}
                 </button>
               </div>
             </form>
@@ -477,7 +510,7 @@ export default function Login() {
           {!otpStep && mode === 'driver-register' && (
             <form onSubmit={handleDriverRegister}>
               <div className="input-group">
-                <label className="input-label" style={{ fontWeight: 600 }}>Driver Full Name</label>
+                <label className="input-label" style={{ fontWeight: 600 }}>{t('login.label.full_name')}</label>
                 <div className="input-icon-wrapper">
                   <User size={15} className="input-icon" />
                   <input 
@@ -486,7 +519,7 @@ export default function Login() {
                     type="text" 
                     value={name} 
                     onChange={e => setName(e.target.value)} 
-                    placeholder="e.g. Ramesh Rao" 
+                    placeholder={t('login.placeholder.full_name')} 
                     required 
                     autoFocus 
                   />
@@ -494,7 +527,7 @@ export default function Login() {
               </div>
 
               <div className="input-group">
-                <label className="input-label" style={{ fontWeight: 600 }}>Driver Email / Employee ID</label>
+                <label className="input-label" style={{ fontWeight: 600 }}>{t('login.label.driver_email')}</label>
                 <div className="input-icon-wrapper">
                   <Mail size={15} className="input-icon" />
                   <input 
@@ -503,14 +536,14 @@ export default function Login() {
                     type="email" 
                     value={employeeId} 
                     onChange={e => setEmployeeId(e.target.value)} 
-                    placeholder="e.g. ramesh@msrtc.in" 
+                    placeholder={t('login.placeholder.driver_email_reg')} 
                     required 
                   />
                 </div>
               </div>
 
               <div className="input-group">
-                <label className="input-label" style={{ fontWeight: 600 }}>Mobile Number</label>
+                <label className="input-label" style={{ fontWeight: 600 }}>{t('login.label.mobile')}</label>
                 <div className="input-icon-wrapper">
                   <Phone size={15} className="input-icon" />
                   <input 
@@ -519,13 +552,13 @@ export default function Login() {
                     type="tel" 
                     value={phone} 
                     onChange={e => setPhone(e.target.value)} 
-                    placeholder="e.g. 9876543210" 
+                    placeholder={t('login.placeholder.mobile')} 
                   />
                 </div>
               </div>
 
               <div className="input-group">
-                <label className="input-label" style={{ fontWeight: 600 }}>Password</label>
+                <label className="input-label" style={{ fontWeight: 600 }}>{t('login.label.password')}</label>
                 <div className="input-icon-wrapper">
                   <input 
                     className="input" 
@@ -547,17 +580,17 @@ export default function Login() {
               </div>
 
               <button type="submit" className="btn btn-primary btn-full btn-lg" disabled={loading} style={{ marginTop: 6 }}>
-                {loading ? <Loader size={16} className="animate-spin" /> : 'Register Broadcaster Account'}
+                {loading ? <Loader size={16} className="animate-spin" /> : t('login.btn.register')}
               </button>
 
               <div style={{ marginTop: 16, textAlign: 'center', fontSize: '0.8rem' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Already registered? </span>
+                <span style={{ color: 'var(--text-secondary)' }}>{t('login.already_registered')} </span>
                 <button 
                   type="button" 
                   onClick={() => { setMode('driver-login'); setError(''); setSuccessMsg(''); }} 
                   style={{ background: 'none', border: 'none', color: 'var(--accent)', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
                 >
-                  Driver Sign In
+                  {t('login.btn.driver_signin')}
                 </button>
               </div>
             </form>
@@ -566,18 +599,18 @@ export default function Login() {
           {/* MSRTC Lalpari Services Grid (Visible below forms on both desktop/mobile views) */}
           <div style={{ marginTop: 28, borderTop: '1px solid var(--border)', paddingTop: 20 }}>
             <div style={{ marginBottom: 12, fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              MSRTC State Transport
+              {t('login.msrtc_title')}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div style={{ background: 'var(--bg-subtle)', borderRadius: 12, padding: '12px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <span style={{ fontSize: '1.25rem' }}>🚩</span>
-                <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-primary)' }}>Standard Lalpari</span>
-                <span style={{ fontSize: '0.66rem', color: 'var(--text-muted)', lineHeight: 1.3 }}>The classic red express connecting towns & villages.</span>
+                <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-primary)' }}>{t('login.service.standard')}</span>
+                <span style={{ fontSize: '0.66rem', color: 'var(--text-muted)', lineHeight: 1.3 }}>{t('login.service.standard_desc')}</span>
               </div>
               <div style={{ background: 'var(--bg-subtle)', borderRadius: 12, padding: '12px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <span style={{ fontSize: '1.25rem' }}>⚡</span>
-                <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-primary)' }}>Shivshahi / E-Bus</span>
-                <span style={{ fontSize: '0.66rem', color: 'var(--text-muted)', lineHeight: 1.3 }}>Premium AC air-conditioned state highway coaches.</span>
+                <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-primary)' }}>{t('login.service.shivshahi')}</span>
+                <span style={{ fontSize: '0.66rem', color: 'var(--text-muted)', lineHeight: 1.3 }}>{t('login.service.shivshahi_desc')}</span>
               </div>
             </div>
           </div>

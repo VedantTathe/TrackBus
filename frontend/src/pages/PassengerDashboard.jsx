@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../i18n';
 import axios from 'axios';
 import {
   Search, Bus, MapPin, Gauge, Clock, ArrowRight,
   Navigation, ChevronRight, X, User
 } from 'lucide-react';
 
-const CROWD_LABELS = { 1: 'Empty', 2: 'Seats avail.', 3: 'Standing', 4: 'Full' };
+// Crowd labels/colors keyed by level, filled in at render using t()
 const CROWD_COLORS = { 1: 'badge-green', 2: 'badge-blue', 3: 'badge-amber', 4: 'badge-red' };
 const RECENT_KEY = 'trackbus_recent_buses';
 
@@ -73,6 +74,13 @@ function TimeSince({ date }) {
 }
 
 function BusCard({ bus, onTrack }) {
+  const { t } = useLanguage();
+  const CROWD_LABELS = {
+    1: t('crowd.empty'),
+    2: t('crowd.seats'),
+    3: t('crowd.standing'),
+    4: t('crowd.full')
+  };
   const isActive = bus.status === 'active';
   return (
     <div className="bus-card" onClick={() => onTrack(bus)}>
@@ -99,7 +107,7 @@ function BusCard({ bus, onTrack }) {
           </div>
           <div style={{ marginTop: 10 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{CROWD_LABELS[bus.currentCrowd] || 'Unknown'}</span>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{CROWD_LABELS[bus.currentCrowd] || t('crowd.unknown')}</span>
               <span className={`badge badge-sm ${CROWD_COLORS[bus.currentCrowd] || 'badge-gray'}`} style={{ fontSize: '0.68rem', padding: '2px 6px' }}>
                 {CROWD_LABELS[bus.currentCrowd] || '—'}
               </span>
@@ -107,7 +115,7 @@ function BusCard({ bus, onTrack }) {
             <CrowdBar level={bus.currentCrowd || 1} />
           </div>
           <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '0.78rem', color: 'var(--accent)', fontWeight: 600 }}>Tap to track</span>
+            <span style={{ fontSize: '0.78rem', color: 'var(--accent)', fontWeight: 600 }}>{t('passenger.tap_to_track')}</span>
             <ChevronRight size={14} style={{ color: 'var(--accent)' }} />
           </div>
         </>
@@ -119,6 +127,7 @@ function BusCard({ bus, onTrack }) {
 export default function PassengerDashboard() {
   const navigate = useNavigate();
   const { user, logout, isInstallable, installApp } = useAuth();
+  const { t, lang, toggleLanguage } = useLanguage();
 
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -154,7 +163,7 @@ export default function PassengerDashboard() {
     const cleanTo = to.trim();
 
     if (!cleanFrom || !cleanTo) {
-      setErrorMsg('Please enter both Origin and Destination.');
+      setErrorMsg(t('passenger.error.both_required'));
       return;
     }
 
@@ -208,10 +217,29 @@ export default function PassengerDashboard() {
       <div className="topbar">
         <div className="topbar-logo">
           <div className="topbar-logo-icon"><Bus size={15} /></div>
-          <span className="topbar-logo-text">TrackBus</span>
+          <span className="topbar-logo-text">{t('topbar.passenger_dashboard')}</span>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* Language Toggle */}
+          <button
+            onClick={toggleLanguage}
+            style={{
+              background: 'var(--bg-subtle)',
+              border: '1px solid var(--border)',
+              borderRadius: 20,
+              padding: '4px 12px',
+              fontSize: '0.72rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              color: 'var(--text-secondary)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4
+            }}
+          >
+            🌐 {t('lang.toggle')}
+          </button>
           <button className="btn btn-ghost" onClick={() => navigate('/profile')} style={{ padding: 8 }}>
             <User size={16} />
           </button>
@@ -221,8 +249,8 @@ export default function PassengerDashboard() {
       <div className="page-content">
         {/* Greeting */}
         <div style={{ padding: '16px 0 4px' }}>
-          <h2 style={{ fontSize: '1.25rem', fontWeight: 800 }}>Hello, {user?.name?.split(' ')[0] || 'Traveller'} 👋</h2>
-          <p style={{ fontSize: '0.85rem', marginTop: 2, color: 'var(--text-secondary)' }}>Where are you headed today?</p>
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 800 }}>{t('passenger.greeting')} {user?.name?.split(' ')[0] || 'Traveller'} {t('passenger.greeting_suffix')}</h2>
+          <p style={{ fontSize: '0.85rem', marginTop: 2, color: 'var(--text-secondary)' }}>{t('passenger.subtitle')}</p>
         </div>
 
         {/* PWA Mobile Install App Banner */}
@@ -246,8 +274,8 @@ export default function PassengerDashboard() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: '1.2rem' }}>📱</span>
               <div>
-                <div style={{ fontWeight: 800, fontSize: '0.82rem' }}>TrackBus MSRTC App</div>
-                <div style={{ fontSize: '0.72rem', opacity: 0.9, marginTop: 1 }}>Install our app for fast, live bus updates!</div>
+                <div style={{ fontWeight: 800, fontSize: '0.82rem' }}>{t('passenger.install_title')}</div>
+                <div style={{ fontSize: '0.72rem', opacity: 0.9, marginTop: 1 }}>{t('passenger.install_desc')}</div>
               </div>
             </div>
             <button
@@ -255,25 +283,24 @@ export default function PassengerDashboard() {
               onClick={installApp}
               style={{ background: 'white', color: 'var(--accent)', borderRadius: 20, padding: '4px 12px', fontSize: '0.74rem', fontWeight: 800 }}
             >
-              Install App
+              {t('passenger.install_btn')}
             </button>
           </div>
         )}
 
-        {/* Responsive Grid Panel */}
         <div className="grid-desktop-2-1" style={{ marginTop: 12 }}>
 
           {/* Left Column: Search Corridor and Filters */}
           <div>
             <div className="card premium-glass-card" style={{ padding: '20px 18px', border: '1px solid var(--border)' }}>
               <div style={{ marginBottom: 16, fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Search Transit Corridors
+                {t('passenger.search_title')}
               </div>
               <form onSubmit={handleSearch} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div style={{ display: 'flex', gap: 12 }}>
                     <div style={{ flex: 1 }}>
-                      <label className="input-label" style={{ marginBottom: 4, display: 'block' }}>Origin</label>
+                      <label className="input-label" style={{ marginBottom: 4, display: 'block' }}>{t('passenger.label.origin')}</label>
                       <input
                         className="input"
                         value={from}
@@ -281,12 +308,12 @@ export default function PassengerDashboard() {
                           setFrom(e.target.value);
                           if (errorMsg) setErrorMsg('');
                         }}
-                        placeholder="From (e.g. Pune)"
+                        placeholder={t('passenger.placeholder.from')}
                         list="city-list"
                       />
                     </div>
                     <div style={{ flex: 1 }}>
-                      <label className="input-label" style={{ marginBottom: 4, display: 'block' }}>Destination</label>
+                      <label className="input-label" style={{ marginBottom: 4, display: 'block' }}>{t('passenger.label.destination')}</label>
                       <input
                         className="input"
                         value={to}
@@ -294,13 +321,13 @@ export default function PassengerDashboard() {
                           setTo(e.target.value);
                           if (errorMsg) setErrorMsg('');
                         }}
-                        placeholder="To (e.g. Sangli)"
+                        placeholder={t('passenger.placeholder.to')}
                         list="city-list"
                       />
                     </div>
                   </div>
                   <button type="submit" className="btn btn-primary btn-full btn-lg" style={{ marginTop: 4 }}>
-                    <Search size={16} /> Search Routes
+                    <Search size={16} /> {t('passenger.btn.search')}
                   </button>
                 </div>
               </form>
@@ -320,7 +347,7 @@ export default function PassengerDashboard() {
               {/* Quick routes */}
               <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 14 }}>
                 <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
-                  Popular Corridors
+                  {t('passenger.popular_corridors')}
                 </div>
                 <div className="chip-list">
                   {QUICK_ROUTES.map(qr => (
@@ -336,14 +363,14 @@ export default function PassengerDashboard() {
           {/* Right Column: Recent Transits List */}
           <div>
             <div className="section-header" style={{ paddingTop: 0 }}>
-              <span className="section-title">Recent Transits</span>
+              <span className="section-title">{t('passenger.recent_transits')}</span>
             </div>
 
             {displayBuses.length === 0 ? (
               <div className="empty-state card premium-glass-card" style={{ padding: '36px 24px', border: '1px solid var(--border)' }}>
                 <div className="empty-icon"><Bus size={24} /></div>
-                <h3>No recent transits</h3>
-                <p>Search for a corridor or track one to see it here</p>
+                <h3>{t('passenger.no_recent')}</h3>
+                <p>{t('passenger.no_recent_desc')}</p>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

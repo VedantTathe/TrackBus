@@ -51,6 +51,15 @@ const liveTripSchema = new mongoose.Schema({
     enum: [1, 2, 3, 4], // 1: Empty, 2: Seats Available, 3: Standing Room Only, 4: Crowded/Full
     default: 1,
   },
+  driverSetOccupancy: {
+    type: Number,
+    enum: [1, 2, 3, 4],
+    default: null,
+  },
+  driverLastOccupancyUpdate: {
+    type: Date,
+    default: null,
+  },
   passengerOccupancyVotes: [
     {
       passengerId: { type: String, required: true },

@@ -143,3 +143,56 @@ export const sendDriverApprovedEmail = async (email, driverName = 'Driver') => {
 
   return await sendEmail({ to: email, subject, text, html });
 };
+
+/**
+ * Sends an admin notification when a new driver registers and needs approval.
+ * @param {string} adminEmail admin recipient address (from ADMIN_EMAIL env var)
+ * @param {object} driver { name, employeeId, phone }
+ */
+export const sendDriverPendingApprovalEmail = async (adminEmail, driver = {}) => {
+  const driverName = driver.name || 'Unknown Driver';
+  const driverEmail = driver.employeeId || 'N/A';
+  const driverPhone = driver.phone || 'N/A';
+
+  const subject = `[TrackBus] New Driver Registration — Approval Required`;
+  const text = `Hello Admin,\n\nA new MSRTC driver has registered on TrackBus and is awaiting your approval.\n\nDriver Details:\n  Name:   ${driverName}\n  Email:  ${driverEmail}\n  Phone:  ${driverPhone}\n\nPlease log in to the admin panel to review and approve this account.\n\nRegards,\nTrackBus System`;
+
+  const html = `
+    <div style="font-family: 'Inter', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #f1f5f9; border-radius: 16px; background-color: #ffffff;">
+      <div style="text-align: center; margin-bottom: 24px;">
+        <h2 style="font-weight: 900; color: #dc2626; margin: 0; font-size: 24px; letter-spacing: -0.5px;">TrackBus</h2>
+        <span style="font-size: 10px; font-weight: 800; text-transform: uppercase; color: #94a3b8; letter-spacing: 1.5px;">Admin — Driver Approval Request</span>
+      </div>
+
+      <div style="background: #fef2f2; border: 1.5px solid #fecaca; border-radius: 12px; padding: 16px 18px; margin-bottom: 20px;">
+        <p style="margin: 0 0 4px; font-size: 13px; font-weight: 800; color: #991b1b;">⏳ Action Required: New Driver Pending Approval</p>
+        <p style="margin: 0; font-size: 13px; color: #7f1d1d;">A new driver account is waiting for your review.</p>
+      </div>
+
+      <table style="width: 100%; border-collapse: collapse; font-size: 13px; color: #334155;">
+        <tr style="border-bottom: 1px solid #f1f5f9;">
+          <td style="padding: 10px 0; font-weight: 700; width: 100px; color: #64748b;">Name</td>
+          <td style="padding: 10px 0; font-weight: 800; color: #0f172a;">${driverName}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #f1f5f9;">
+          <td style="padding: 10px 0; font-weight: 700; color: #64748b;">Email</td>
+          <td style="padding: 10px 0; font-weight: 800; color: #0f172a;">${driverEmail}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 0; font-weight: 700; color: #64748b;">Phone</td>
+          <td style="padding: 10px 0; font-weight: 800; color: #0f172a;">${driverPhone}</td>
+        </tr>
+      </table>
+
+      <p style="font-size: 13px; color: #334155; margin-top: 20px; line-height: 1.6;">
+        Log in to the <strong>TrackBus Admin Panel</strong> and approve this driver so they can start broadcasting live trips.
+      </p>
+
+      <div style="border-t: 1px solid #f1f5f9; margin-top: 28px; padding-top: 14px; text-align: center; font-size: 10px; color: #94a3b8; font-weight: 700;">
+        © 2026 TrackBus Transit • Automated System Notification
+      </div>
+    </div>
+  `;
+
+  return await sendEmail({ to: adminEmail, subject, text, html });
+};
