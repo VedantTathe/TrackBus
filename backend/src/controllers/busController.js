@@ -4,7 +4,7 @@ import Route from '../models/Route.js';
 import Bus from '../models/Bus.js';
 
 // Re-export seed variables for server startup references
-export { seedRoutesIfEmpty, seedBusesIfEmpty, SEED_ROUTES, MOCK_BUSES } from '../services/busService.js';
+export { seedRoutesIfEmpty, seedBusesIfEmpty, SEED_ROUTES } from '../services/busService.js';
 
 /**
  * @desc    Create a new bus
@@ -12,8 +12,7 @@ export { seedRoutesIfEmpty, seedBusesIfEmpty, SEED_ROUTES, MOCK_BUSES } from '..
  * @access  Private (Admin Only)
  */
 export const createBus = catchAsync(async (req, res, next) => {
-  const isDbConnected = req.app.get('isDbConnected');
-  const bus = await busService.createBus(req.body, isDbConnected);
+  const bus = await busService.createBus(req.body);
   
   res.status(201).json(bus);
 });
@@ -24,8 +23,7 @@ export const createBus = catchAsync(async (req, res, next) => {
  * @access  Private (Admin Only)
  */
 export const getBuses = catchAsync(async (req, res, next) => {
-  const isDbConnected = req.app.get('isDbConnected');
-  const buses = await busService.getAllBuses(isDbConnected);
+  const buses = await busService.getAllBuses();
   
   res.status(200).json(buses);
 });
@@ -37,8 +35,7 @@ export const getBuses = catchAsync(async (req, res, next) => {
  */
 export const assignDriver = catchAsync(async (req, res, next) => {
   const { busNumber, employeeId } = req.body;
-  const isDbConnected = req.app.get('isDbConnected');
-  const updatedBus = await busService.assignDriverToBus(busNumber, employeeId, isDbConnected);
+  const updatedBus = await busService.assignDriverToBus(busNumber, employeeId);
   
   res.status(200).json(updatedBus);
 });
@@ -55,7 +52,6 @@ export const assignDriver = catchAsync(async (req, res, next) => {
  * @access  Public
  */
 export const getRoutes = catchAsync(async (req, res, next) => {
-  const isDbConnected = req.app.get('isDbConnected');
   const { q, search } = req.query;
   const searchVal = (q || search || '').trim();
 
@@ -73,55 +69,33 @@ export const getRoutes = catchAsync(async (req, res, next) => {
       const src = parts[0].trim();
       const dest = parts[1].trim();
 
-      if (isDbConnected) {
-        filterResults = await Route.find({
-          $or: [
-            { source: new RegExp(src, 'i'), destination: new RegExp(dest, 'i') },
-            { startPoint: new RegExp(src, 'i'), endPoint: new RegExp(dest, 'i') }
-          ]
-        });
-      } else {
-        filterResults = busService.SEED_ROUTES.filter(r => 
-          (new RegExp(src, 'i').test(r.source || r.startPoint)) && 
-          (new RegExp(dest, 'i').test(r.destination || r.endPoint))
-        );
-      }
+      filterResults = await Route.find({
+        $or: [
+          { source: new RegExp(src, 'i'), destination: new RegExp(dest, 'i') },
+          { startPoint: new RegExp(src, 'i'), endPoint: new RegExp(dest, 'i') }
+        ]
+      });
     } else {
       // General unified query sweep: routeName, routeNumber, busNumbers, source, destination, stops
-      if (isDbConnected) {
-        filterResults = await Route.find({
-          $or: [
-            { routeName: new RegExp(searchVal, 'i') },
-            { routeNumber: new RegExp(searchVal, 'i') },
-            { source: new RegExp(searchVal, 'i') },
-            { destination: new RegExp(searchVal, 'i') },
-            { startPoint: new RegExp(searchVal, 'i') },
-            { endPoint: new RegExp(searchVal, 'i') },
-            { busNumbers: { $elemMatch: { $regex: new RegExp(searchVal, 'i') } } },
-            { 'stops.name': new RegExp(searchVal, 'i') }
-          ]
-        });
-      } else {
-        filterResults = busService.SEED_ROUTES.filter(r => 
-          new RegExp(searchVal, 'i').test(r.routeName) ||
-          new RegExp(searchVal, 'i').test(r.routeNumber) ||
-          new RegExp(searchVal, 'i').test(r.source || r.startPoint) ||
-          new RegExp(searchVal, 'i').test(r.destination || r.endPoint) ||
-          (r.busNumbers && r.busNumbers.some(b => new RegExp(searchVal, 'i').test(b))) ||
-          (r.stops && r.stops.some(s => new RegExp(searchVal, 'i').test(s.name)))
-        );
-      }
+      filterResults = await Route.find({
+        $or: [
+          { routeName: new RegExp(searchVal, 'i') },
+          { routeNumber: new RegExp(searchVal, 'i') },
+          { source: new RegExp(searchVal, 'i') },
+          { destination: new RegExp(searchVal, 'i') },
+          { startPoint: new RegExp(searchVal, 'i') },
+          { endPoint: new RegExp(searchVal, 'i') },
+          { busNumbers: { $elemMatch: { $regex: new RegExp(searchVal, 'i') } } },
+          { 'stops.name': new RegExp(searchVal, 'i') }
+        ]
+      });
     }
     
     return res.status(200).json(filterResults);
   }
 
-  if (isDbConnected) {
-    const routes = await Route.find({});
-    res.status(200).json(routes);
-  } else {
-    res.status(200).json(busService.SEED_ROUTES);
-  }
+  const routes = await Route.find({});
+  res.status(200).json(routes);
 });
 
 /**
@@ -130,22 +104,13 @@ export const getRoutes = catchAsync(async (req, res, next) => {
  * @access  Public
  */
 export const getRouteById = catchAsync(async (req, res, next) => {
-  const isDbConnected = req.app.get('isDbConnected');
   const routeId = req.params.id;
 
-  if (isDbConnected) {
-    const route = await Route.findById(routeId);
-    if (!route) {
-      return res.status(404).json({ message: 'Route not found' });
-    }
-    res.status(200).json(route);
-  } else {
-    const route = busService.SEED_ROUTES.find(r => r._id === routeId);
-    if (!route) {
-      return res.status(404).json({ message: 'Route not found (Mock)' });
-    }
-    res.status(200).json(route);
+  const route = await Route.findById(routeId);
+  if (!route) {
+    return res.status(404).json({ message: 'Route not found' });
   }
+  res.status(200).json(route);
 });
 
 /**
@@ -154,24 +119,18 @@ export const getRouteById = catchAsync(async (req, res, next) => {
  * @access  Public
  */
 export const getActiveBuses = catchAsync(async (req, res, next) => {
-  const isDbConnected = req.app.get('isDbConnected');
-
-  if (isDbConnected) {
-    const buses = await Bus.find({ status: 'active' })
-      .populate('route')
-      .populate('assignedDriver', 'name');
-    
-    // Adapt payload to expected frontend format (mapping assignedDriver to driver)
-    const adaptedBuses = buses.map(b => {
-      const busObj = b.toObject();
-      busObj.driver = busObj.assignedDriver || { name: 'Active Driver' };
-      return busObj;
-    });
-    
-    res.status(200).json(adaptedBuses);
-  } else {
-    res.status(200).json(busService.MOCK_BUSES.filter(b => b.status === 'active'));
-  }
+  const buses = await Bus.find({ status: 'active' })
+    .populate('route')
+    .populate('assignedDriver', 'name');
+  
+  // Adapt payload to expected frontend format (mapping assignedDriver to driver)
+  const adaptedBuses = buses.map(b => {
+    const busObj = b.toObject();
+    busObj.driver = busObj.assignedDriver || { name: 'Active Driver' };
+    return busObj;
+  });
+  
+  res.status(200).json(adaptedBuses);
 });
 
 /**
@@ -180,8 +139,7 @@ export const getActiveBuses = catchAsync(async (req, res, next) => {
  * @access  Private (Driver Only)
  */
 export const toggleBusTracking = catchAsync(async (req, res, next) => {
-  const isDbConnected = req.app.get('isDbConnected');
-  const updatedBus = await busService.toggleBusTracking(req.user, req.body, isDbConnected);
+  const updatedBus = await busService.toggleBusTracking(req.user, req.body);
   
   res.status(200).json(updatedBus);
 });
@@ -193,8 +151,7 @@ export const toggleBusTracking = catchAsync(async (req, res, next) => {
  */
 export const updateCrowdStatus = catchAsync(async (req, res, next) => {
   const { busNumber, currentCrowd } = req.body;
-  const isDbConnected = req.app.get('isDbConnected');
-  const updatedBus = await busService.updateCrowdStatus(busNumber, currentCrowd, isDbConnected);
+  const updatedBus = await busService.updateCrowdStatus(busNumber, currentCrowd);
   
   res.status(200).json(updatedBus);
 });
@@ -205,8 +162,7 @@ export const updateCrowdStatus = catchAsync(async (req, res, next) => {
  * @access  Private (Admin Only)
  */
 export const updateBus = catchAsync(async (req, res, next) => {
-  const isDbConnected = req.app.get('isDbConnected');
-  const bus = await busService.editBus(req.params.id, req.body, isDbConnected);
+  const bus = await busService.editBus(req.params.id, req.body);
   res.status(200).json(bus);
 });
 
@@ -216,8 +172,7 @@ export const updateBus = catchAsync(async (req, res, next) => {
  * @access  Private (Admin Only)
  */
 export const removeBus = catchAsync(async (req, res, next) => {
-  const isDbConnected = req.app.get('isDbConnected');
-  const deleted = await busService.deleteBus(req.params.id, isDbConnected);
+  const deleted = await busService.deleteBus(req.params.id);
   res.status(200).json({ success: true, message: 'Bus removed successfully from fleet roster', deleted });
 });
 
@@ -228,8 +183,7 @@ export const removeBus = catchAsync(async (req, res, next) => {
  */
 export const removeDriverAssignment = catchAsync(async (req, res, next) => {
   const { busNumber } = req.body;
-  const isDbConnected = req.app.get('isDbConnected');
-  const bus = await busService.removeDriverFromBus(busNumber, isDbConnected);
+  const bus = await busService.removeDriverFromBus(busNumber);
   res.status(200).json(bus);
 });
 
@@ -239,8 +193,7 @@ export const removeDriverAssignment = catchAsync(async (req, res, next) => {
  * @access  Private (Admin Only)
  */
 export const getActiveDrivers = catchAsync(async (req, res, next) => {
-  const isDbConnected = req.app.get('isDbConnected');
-  const list = await busService.getActiveDriversList(isDbConnected);
+  const list = await busService.getActiveDriversList();
   res.status(200).json(list);
 });
 
@@ -250,8 +203,7 @@ export const getActiveDrivers = catchAsync(async (req, res, next) => {
  * @access  Private (Admin Only)
  */
 export const addRoute = catchAsync(async (req, res, next) => {
-  const isDbConnected = req.app.get('isDbConnected');
-  const route = await busService.createRoute(req.body, isDbConnected);
+  const route = await busService.createRoute(req.body);
   res.status(201).json(route);
 });
 
@@ -261,7 +213,6 @@ export const addRoute = catchAsync(async (req, res, next) => {
  * @access  Private (Admin Only)
  */
 export const modifyRoute = catchAsync(async (req, res, next) => {
-  const isDbConnected = req.app.get('isDbConnected');
-  const route = await busService.editRoute(req.params.id, req.body, isDbConnected);
+  const route = await busService.editRoute(req.params.id, req.body);
   res.status(200).json(route);
 });

@@ -26,9 +26,7 @@ export const connectDB = async () => {
     console.warn('========================================================');
     console.warn('⚠️  MongoDB Connection Failed!');
     console.error('❌ Mongoose Connection Error:', error.message || error);
-    console.warn('🤖 Running in LOCAL OFFLINE/MOCK DEMO mode.');
-    console.warn('💾 Operations will fallback to transient in-memory state.');
     console.warn('========================================================');
-    return false;
+    throw error;
   }
 };

@@ -1,7 +1,5 @@
 import Bus from '../models/Bus.js';
 import LiveTrip from '../models/LiveTrip.js';
-import { MOCK_BUSES, SEED_ROUTES } from '../services/busService.js';
-import { MOCK_LIVETRIPS } from '../services/tripService.js';
 import { saveLocationLog } from '../services/locationService.js';
 import { calculateDistance } from '../utils/geolocation.js';
 
@@ -28,7 +26,6 @@ export const initSocket = (io, app) => {
     socket.on('driver-location-update', async (data) => {
       // Expected structure: { busNumber, routeId, latitude, longitude, speed, heading, currentCrowd }
       const { busNumber, routeId, latitude, longitude, speed, heading, currentCrowd } = data;
-      const isDbConnected = app.get('isDbConnected');
       const timestamp = new Date();
 
       const payload = {
@@ -43,64 +40,34 @@ export const initSocket = (io, app) => {
       };
 
       try {
-        if (isDbConnected) {
-          // Locate the bus in database
-          let bus = await Bus.findOne({ busNumber });
-          if (bus) {
-            // Commit coordinates to logs and update core Bus coordinates
-            await saveLocationLog(bus._id, {
-              latitude,
-              longitude,
-              speed,
-              heading,
-              timestamp
-            }, true);
-            
-            // Sync current crowd status
-            if (currentCrowd !== undefined) {
-              bus.currentCrowd = currentCrowd;
-              await bus.save();
-            }
-
-            // Sync driver location check-in with LiveTrip
-            const activeTrip = await LiveTrip.findOne({ physicalBusId: bus._id, isActive: true });
-            if (activeTrip) {
-              activeTrip.lastDriverLocationUpdate = timestamp;
-              activeTrip.currentLocation = { lat: Number(latitude), lng: Number(longitude) };
-              activeTrip.speed = Number(speed || 0);
-              activeTrip.heading = Number(heading || 0);
-              activeTrip.lastUpdatedAt = timestamp;
-              activeTrip.pathHistory.push({ lat: Number(latitude), lng: Number(longitude), timestamp });
-              await activeTrip.save();
-            }
+        // Locate the bus in database
+        let bus = await Bus.findOne({ busNumber });
+        if (bus) {
+          // Commit coordinates to logs and update core Bus coordinates
+          await saveLocationLog(bus._id, {
+            latitude,
+            longitude,
+            speed,
+            heading,
+            timestamp
+          });
+          
+          // Sync current crowd status
+          if (currentCrowd !== undefined) {
+            bus.currentCrowd = currentCrowd;
+            await bus.save();
           }
-        } else {
-          // Sync mock state array coordinates
-          const mockBus = MOCK_BUSES.find(b => b.busNumber === busNumber);
-          if (mockBus) {
-            await saveLocationLog(mockBus._id, {
-              latitude,
-              longitude,
-              speed,
-              heading,
-              timestamp
-            }, false);
 
-            if (currentCrowd !== undefined) {
-              mockBus.currentCrowd = currentCrowd;
-            }
-            mockBus.status = 'active';
-
-            // Sync driver location check-in with MOCK_LIVETRIPS
-            const mockTrip = MOCK_LIVETRIPS.find(t => t.physicalBusId?._id === mockBus._id && t.isActive);
-            if (mockTrip) {
-              mockTrip.lastDriverLocationUpdate = timestamp;
-              mockTrip.currentLocation = { lat: Number(latitude), lng: Number(longitude) };
-              mockTrip.speed = Number(speed || 0);
-              mockTrip.heading = Number(heading || 0);
-              mockTrip.lastUpdatedAt = timestamp;
-              mockTrip.pathHistory.push({ lat: Number(latitude), lng: Number(longitude), timestamp });
-            }
+          // Sync driver location check-in with LiveTrip
+          const activeTrip = await LiveTrip.findOne({ physicalBusId: bus._id, isActive: true });
+          if (activeTrip) {
+            activeTrip.lastDriverLocationUpdate = timestamp;
+            activeTrip.currentLocation = { lat: Number(latitude), lng: Number(longitude) };
+            activeTrip.speed = Number(speed || 0);
+            activeTrip.heading = Number(heading || 0);
+            activeTrip.lastUpdatedAt = timestamp;
+            activeTrip.pathHistory.push({ lat: Number(latitude), lng: Number(longitude), timestamp });
+            await activeTrip.save();
           }
         }
       } catch (err) {
@@ -130,7 +97,6 @@ export const initSocket = (io, app) => {
     socket.on('passenger-location-update', async (data) => {
       // Expected structure: { tripId, passengerId, latitude, longitude, speed, heading, accuracy }
       const { tripId, passengerId, latitude, longitude, speed = 0, heading = 0, accuracy } = data;
-      const isDbConnected = app.get('isDbConnected');
       const timestamp = new Date();
 
       const lat = Number(latitude);
@@ -139,12 +105,7 @@ export const initSocket = (io, app) => {
       if (isNaN(lat) || isNaN(lng) || lat === 0 || lng === 0) return; // filter bad telemetry
 
       try {
-        let activeTrip = null;
-        if (isDbConnected) {
-          activeTrip = await LiveTrip.findOne({ tripId, isActive: true }).populate('physicalBusId');
-        } else {
-          activeTrip = MOCK_LIVETRIPS.find(t => (t.tripId === tripId || t._id === tripId) && t.isActive);
-        }
+        let activeTrip = await LiveTrip.findOne({ tripId, isActive: true }).populate('physicalBusId');
 
         if (!activeTrip) return;
 
@@ -176,41 +137,21 @@ export const initSocket = (io, app) => {
             console.log(`📡 Driver GPS signal stale for trip ${tripId}. Falling back to crowd-sourced passenger updates!`);
 
             // Inject coordinate update as core bus coordinates
-            if (isDbConnected) {
-              activeTrip.currentLocation = { lat, lng };
-              activeTrip.speed = Number(speed || 0);
-              activeTrip.heading = Number(heading || 0);
-              activeTrip.lastUpdatedAt = timestamp;
-              activeTrip.pathHistory.push({ lat, lng, timestamp });
-              await activeTrip.save();
+            activeTrip.currentLocation = { lat, lng };
+            activeTrip.speed = Number(speed || 0);
+            activeTrip.heading = Number(heading || 0);
+            activeTrip.lastUpdatedAt = timestamp;
+            activeTrip.pathHistory.push({ lat, lng, timestamp });
+            await activeTrip.save();
 
-              if (activeTrip.physicalBusId) {
-                await Bus.findByIdAndUpdate(activeTrip.physicalBusId._id, {
-                  latitude: lat,
-                  longitude: lng,
-                  speed: Number(speed || 0),
-                  heading: Number(heading || 0),
-                  lastUpdated: timestamp
-                });
-              }
-            } else {
-              activeTrip.currentLocation = { lat, lng };
-              activeTrip.speed = Number(speed || 0);
-              activeTrip.heading = Number(heading || 0);
-              activeTrip.lastUpdatedAt = timestamp;
-              activeTrip.pathHistory.push({ lat, lng, timestamp });
-
-              if (activeTrip.physicalBusId) {
-                const busNum = activeTrip.physicalBusId.busNumber;
-                const mockBus = MOCK_BUSES.find(b => b.busNumber === busNum);
-                if (mockBus) {
-                  mockBus.latitude = lat;
-                  mockBus.longitude = lng;
-                  mockBus.speed = Number(speed || 0);
-                  mockBus.heading = Number(heading || 0);
-                  mockBus.lastUpdated = timestamp;
-                }
-              }
+            if (activeTrip.physicalBusId) {
+              await Bus.findByIdAndUpdate(activeTrip.physicalBusId._id, {
+                latitude: lat,
+                longitude: lng,
+                speed: Number(speed || 0),
+                heading: Number(heading || 0),
+                lastUpdated: timestamp
+              });
             }
 
             // Broadcast the location change to everyone tracking this trip!

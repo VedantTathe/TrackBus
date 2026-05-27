@@ -4,8 +4,10 @@ import Route from '../models/Route.js';
 import User from '../models/User.js';
 import { createHash } from 'crypto';
 import { AppError } from '../utils/errors.js';
-import { MOCK_BUSES, SEED_ROUTES } from './busService.js';
-import { MOCK_USERS } from './authService.js';
+import { SEED_ROUTES } from './busService.js';
+
+const MOCK_BUSES = [];
+const MOCK_USERS = [];
 import { fetchOsrmRoutes, fetchOsrmRouteThroughVia } from './osrmService.js';
 import { calculateDistance } from '../utils/geolocation.js';
 import { CITY_COORDINATES } from '../data/cityCoordinates.js';

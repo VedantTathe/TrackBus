@@ -8,9 +8,8 @@ import * as tripService from '../services/tripService.js';
  */
 export const suggestRoutes = catchAsync(async (req, res, next) => {
   const { source, destination } = req.query;
-  const isDbConnected = req.app.get('isDbConnected');
 
-  const suggestions = await tripService.suggestRouteTemplates(source, destination, isDbConnected);
+  const suggestions = await tripService.suggestRouteTemplates(source, destination, true);
   res.status(200).json(suggestions);
 });
 
@@ -20,7 +19,6 @@ export const suggestRoutes = catchAsync(async (req, res, next) => {
  * @access  Private (Admin / Driver Clearance)
  */
 export const startLiveTrip = catchAsync(async (req, res, next) => {
-  const isDbConnected = req.app.get('isDbConnected');
   const driverId = req.user._id || req.user.id;
 
   const tripData = {
@@ -33,7 +31,7 @@ export const startLiveTrip = catchAsync(async (req, res, next) => {
     driverId
   };
 
-  const trip = await tripService.startLiveTrip(tripData, isDbConnected);
+  const trip = await tripService.startLiveTrip(tripData, true);
 
   // Broadcast status update via Socket.IO
   const io = req.app.get('io');
@@ -54,21 +52,20 @@ export const startLiveTrip = catchAsync(async (req, res, next) => {
  * @access  Private (Admin / Driver Clearance)
  */
 export const endLiveTrip = catchAsync(async (req, res, next) => {
-  const isDbConnected = req.app.get('isDbConnected');
   const driverId = req.user._id || req.user.id;
 
   let tripId = req.body.tripId;
 
   // If tripId is not specified, auto-detect active trip for driver
   if (!tripId) {
-    const activeTrip = await tripService.getActiveDriverTrip(driverId, isDbConnected);
+    const activeTrip = await tripService.getActiveDriverTrip(driverId, true);
     if (!activeTrip) {
       return next(new AppError('No active live trip session found for this driver to end', 404));
     }
     tripId = activeTrip.tripId;
   }
 
-  const trip = await tripService.endLiveTrip(tripId, isDbConnected);
+  const trip = await tripService.endLiveTrip(tripId, true);
 
   // Broadcast status update via Socket.IO
   const io = req.app.get('io');
@@ -89,21 +86,20 @@ export const endLiveTrip = catchAsync(async (req, res, next) => {
  * @access  Private (Driver Only)
  */
 export const updateTripOccupancy = catchAsync(async (req, res, next) => {
-  const isDbConnected = req.app.get('isDbConnected');
   const driverId = req.user._id || req.user.id;
   const { occupancyLevel } = req.body;
   let tripId = req.body.tripId;
 
   // Auto-detect active trip if not passed
   if (!tripId) {
-    const activeTrip = await tripService.getActiveDriverTrip(driverId, isDbConnected);
+    const activeTrip = await tripService.getActiveDriverTrip(driverId, true);
     if (!activeTrip) {
       return next(new AppError('No active live trip session found for this driver', 404));
     }
     tripId = activeTrip.tripId;
   }
 
-  const trip = await tripService.updateOccupancy(tripId, occupancyLevel, isDbConnected);
+  const trip = await tripService.updateOccupancy(tripId, occupancyLevel, true);
 
   // Broadcast occupancy update via Socket.IO
   const io = req.app.get('io');
@@ -132,8 +128,7 @@ export const updateTripOccupancy = catchAsync(async (req, res, next) => {
  * @access  Public
  */
 export const fetchActiveTrips = catchAsync(async (req, res, next) => {
-  const isDbConnected = req.app.get('isDbConnected');
-  const list = await tripService.getActiveTrips(isDbConnected);
+  const list = await tripService.getActiveTrips(true);
 
   res.status(200).json(list);
 });
@@ -144,8 +139,7 @@ export const fetchActiveTrips = catchAsync(async (req, res, next) => {
  * @access  Private (Admin Only)
  */
 export const fetchTripHistory = catchAsync(async (req, res, next) => {
-  const isDbConnected = req.app.get('isDbConnected');
-  const list = await tripService.getTripHistory(isDbConnected);
+  const list = await tripService.getTripHistory(true);
 
   res.status(200).json(list);
 });
@@ -156,9 +150,8 @@ export const fetchTripHistory = catchAsync(async (req, res, next) => {
  * @access  Private (Driver Only)
  */
 export const fetchActiveDriverTrip = catchAsync(async (req, res, next) => {
-  const isDbConnected = req.app.get('isDbConnected');
   const driverId = req.user._id || req.user.id;
 
-  const trip = await tripService.getActiveDriverTrip(driverId, isDbConnected);
+  const trip = await tripService.getActiveDriverTrip(driverId, true);
   res.status(200).json(trip);
 });

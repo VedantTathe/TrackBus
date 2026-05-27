@@ -1,8 +1,6 @@
 import { catchAsync, AppError } from '../utils/errors.js';
 import Bus from '../models/Bus.js';
 import LiveTrip from '../models/LiveTrip.js';
-import { MOCK_BUSES } from '../services/busService.js';
-import { MOCK_LIVETRIPS } from '../services/tripService.js';
 import * as locationService from '../services/locationService.js';
 
 /**
@@ -11,7 +9,6 @@ import * as locationService from '../services/locationService.js';
  * @access  Private (Driver Only)
  */
 export const updateLocation = catchAsync(async (req, res, next) => {
-  const isDbConnected = req.app.get('isDbConnected');
   const userId = req.user._id || req.user.id;
   const { latitude, longitude, speed, heading, busNumber } = req.body;
 
@@ -25,30 +22,18 @@ export const updateLocation = catchAsync(async (req, res, next) => {
   const hdgNum = Number(heading || 0);
   const timestamp = new Date();
 
-  let activeTrip = null;
+  // 1. Locate active LiveTrip for driver
+  let activeTrip = await LiveTrip.findOne({ driverId: userId, isActive: true })
+    .populate('physicalBusId')
+    .populate('selectedRouteTemplateId');
 
-  if (isDbConnected) {
-    // 1. Locate active LiveTrip for driver
-    activeTrip = await LiveTrip.findOne({ driverId: userId, isActive: true })
-      .populate('physicalBusId')
-      .populate('selectedRouteTemplateId');
-
-    // Fallback: search by busNumber if driver mapping is tricky
-    if (!activeTrip && busNumber) {
-      const bus = await Bus.findOne({ busNumber });
-      if (bus) {
-        activeTrip = await LiveTrip.findOne({ physicalBusId: bus._id, isActive: true })
-          .populate('physicalBusId')
-          .populate('selectedRouteTemplateId');
-      }
-    }
-  } else {
-    // Mock Fallback: locate assigned mock live trip
-    activeTrip = MOCK_LIVETRIPS.find(t => t.isActive && (t.driverId._id === userId || t.driverId === userId));
-
-    // Fallback: search by mock busNumber
-    if (!activeTrip && busNumber) {
-      activeTrip = MOCK_LIVETRIPS.find(t => t.isActive && t.physicalBusId && t.physicalBusId.busNumber === busNumber);
+  // Fallback: search by busNumber if driver mapping is tricky
+  if (!activeTrip && busNumber) {
+    const bus = await Bus.findOne({ busNumber });
+    if (bus) {
+      activeTrip = await LiveTrip.findOne({ physicalBusId: bus._id, isActive: true })
+        .populate('physicalBusId')
+        .populate('selectedRouteTemplateId');
     }
   }
 
@@ -57,62 +42,37 @@ export const updateLocation = catchAsync(async (req, res, next) => {
   }
 
   // 2. Commit coordinate update to LiveTrip and push to pathHistory
-  if (isDbConnected) {
-    if (req.body.resetHistory) {
-      activeTrip.pathHistory = [];
-      console.log(`🧹 Cleared path history contamination for active trip: ${activeTrip.tripId}`);
-    }
-    activeTrip.currentLocation = { lat: latNum, lng: lngNum };
-    activeTrip.speed = spdNum;
-    activeTrip.heading = hdgNum;
-    activeTrip.lastUpdatedAt = timestamp;
-    activeTrip.pathHistory.push({ lat: latNum, lng: lngNum, timestamp });
-    await activeTrip.save();
+  if (req.body.resetHistory) {
+    activeTrip.pathHistory = [];
+    console.log(`🧹 Cleared path history contamination for active trip: ${activeTrip.tripId}`);
+  }
+  activeTrip.currentLocation = { lat: latNum, lng: lngNum };
+  activeTrip.speed = spdNum;
+  activeTrip.heading = hdgNum;
+  activeTrip.lastUpdatedAt = timestamp;
+  activeTrip.pathHistory.push({ lat: latNum, lng: lngNum, timestamp });
+  await activeTrip.save();
 
-    // Sync to legacy Bus model if attached, so old clients still show the bus location
-    if (activeTrip.physicalBusId) {
-      await Bus.findByIdAndUpdate(activeTrip.physicalBusId._id, {
+  // Sync to legacy Bus model if attached, so old clients still show the bus location
+  if (activeTrip.physicalBusId) {
+    await Bus.findByIdAndUpdate(activeTrip.physicalBusId._id, {
+      latitude: latNum,
+      longitude: lngNum,
+      speed: spdNum,
+      heading: hdgNum,
+      lastUpdated: timestamp
+    });
+    // Log location log coordinates in legacy Location logs
+    try {
+      await locationService.saveLocationLog(activeTrip.physicalBusId._id, {
         latitude: latNum,
         longitude: lngNum,
         speed: spdNum,
         heading: hdgNum,
-        lastUpdated: timestamp
+        timestamp
       });
-      // Log location log coordinates in legacy Location logs
-      try {
-        await locationService.saveLocationLog(activeTrip.physicalBusId._id, {
-          latitude: latNum,
-          longitude: lngNum,
-          speed: spdNum,
-          heading: hdgNum,
-          timestamp
-        }, true);
-      } catch (err) {
-        console.warn('Failed to log legacy location coordinate:', err.message);
-      }
-    }
-  } else {
-    // Update mock active trip
-    if (req.body.resetHistory) {
-      activeTrip.pathHistory = [];
-      console.log(`🧹 Mock: Cleared path history contamination for active trip: ${activeTrip.tripId}`);
-    }
-    activeTrip.currentLocation = { lat: latNum, lng: lngNum };
-    activeTrip.speed = spdNum;
-    activeTrip.heading = hdgNum;
-    activeTrip.lastUpdatedAt = timestamp;
-    activeTrip.pathHistory.push({ lat: latNum, lng: lngNum, timestamp });
-
-    // Sync to mock bus if attached
-    if (activeTrip.physicalBusId) {
-      const mb = MOCK_BUSES.find(b => b._id === activeTrip.physicalBusId._id);
-      if (mb) {
-        mb.latitude = latNum;
-        mb.longitude = lngNum;
-        mb.speed = spdNum;
-        mb.heading = hdgNum;
-        mb.lastUpdated = timestamp;
-      }
+    } catch (err) {
+      console.warn('Failed to log legacy location coordinate:', err.message);
     }
   }
 
@@ -177,9 +137,8 @@ export const updateLocation = catchAsync(async (req, res, next) => {
  */
 export const getLatestLocation = catchAsync(async (req, res, next) => {
   const { busId } = req.params;
-  const isDbConnected = req.app.get('isDbConnected');
 
-  const location = await locationService.getLatestBusLocation(busId, isDbConnected);
+  const location = await locationService.getLatestBusLocation(busId);
   if (!location) {
     return next(new AppError('No location logs found for this vehicle node', 404));
   }

@@ -7,8 +7,7 @@ import * as authService from '../services/authService.js';
  * @access  Public
  */
 export const register = catchAsync(async (req, res, next) => {
-  const isDbConnected = req.app.get('isDbConnected');
-  const result = await authService.registerUser(req.body, isDbConnected);
+  const result = await authService.registerUser(req.body);
   
   res.status(201).json(result);
 });
@@ -20,8 +19,7 @@ export const register = catchAsync(async (req, res, next) => {
  */
 export const login = catchAsync(async (req, res, next) => {
   const { employeeId, password } = req.body;
-  const isDbConnected = req.app.get('isDbConnected');
-  const result = await authService.loginUser(employeeId, password, isDbConnected);
+  const result = await authService.loginUser(employeeId, password);
   
   res.status(200).json(result);
 });
@@ -34,8 +32,7 @@ export const login = catchAsync(async (req, res, next) => {
 export const verifyOtp = catchAsync(async (req, res, next) => {
   const { employeeId } = req.body;
   const otp = req.body.otp || req.body.otpCode;
-  const isDbConnected = req.app.get('isDbConnected');
-  const result = await authService.verifyOtpUser(employeeId, otp, isDbConnected);
+  const result = await authService.verifyOtpUser(employeeId, otp);
   
   res.status(200).json(result);
 });
@@ -47,8 +44,7 @@ export const verifyOtp = catchAsync(async (req, res, next) => {
  */
 export const resendOtp = catchAsync(async (req, res, next) => {
   const { employeeId } = req.body;
-  const isDbConnected = req.app.get('isDbConnected');
-  const result = await authService.resendOtpUser(employeeId, isDbConnected);
+  const result = await authService.resendOtpUser(employeeId);
   
   res.status(200).json(result);
 });
@@ -59,8 +55,7 @@ export const resendOtp = catchAsync(async (req, res, next) => {
  * @access  Private
  */
 export const getProfile = catchAsync(async (req, res, next) => {
-  const isDbConnected = req.app.get('isDbConnected');
-  const profile = await authService.getUserProfile(req.user._id || req.user.id, isDbConnected);
+  const profile = await authService.getUserProfile(req.user._id || req.user.id);
   
   res.status(200).json(profile);
 });
@@ -72,8 +67,7 @@ export const getProfile = catchAsync(async (req, res, next) => {
  */
 export const approveDriver = catchAsync(async (req, res, next) => {
   const { employeeId } = req.body;
-  const isDbConnected = req.app.get('isDbConnected');
-  const result = await authService.approveDriverUser(employeeId, isDbConnected);
+  const result = await authService.approveDriverUser(employeeId);
   
   res.status(200).json(result);
 });
@@ -85,7 +79,6 @@ export const approveDriver = catchAsync(async (req, res, next) => {
  */
 export const changePassword = catchAsync(async (req, res, next) => {
   const { currentPassword, newPassword } = req.body;
-  const isDbConnected = req.app.get('isDbConnected');
-  const result = await authService.changePassword(req.user._id || req.user.id, currentPassword, newPassword, isDbConnected);
+  const result = await authService.changePassword(req.user._id || req.user.id, currentPassword, newPassword);
   res.status(200).json(result);
 });

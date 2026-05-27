@@ -32,19 +32,12 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Set up server state variables
-app.set('isDbConnected', false);
-
 // Initialize DB and Seeding
 const initializeBackend = async () => {
-  const isConnected = await connectDB();
-  app.set('isDbConnected', isConnected);
-  
-  if (isConnected) {
-    await ensureAdminUser(isConnected);
-    // Do not auto-seed routes/buses; routes should come from real driver-created flows.
-    await seedCitiesIfEmpty();
-  }
+  await connectDB();
+  await ensureAdminUser(true);
+  // Do not auto-seed routes/buses; routes should come from real driver-created flows.
+  await seedCitiesIfEmpty();
 };
 
 initializeBackend();
@@ -62,7 +55,7 @@ app.use('/api/passenger', passengerRoutes);
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'healthy',
-    mode: app.get('isDbConnected') ? 'production-database' : 'local-in-memory-mock',
+    mode: 'production-database',
     timestamp: new Date()
   });
 });
@@ -85,11 +78,14 @@ app.set('io', io);
 initSocket(io, app);
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log('🚀 ====================================================');
-  console.log(`🚀 TrackBus Server Running on Port ${PORT}`);
-  console.log(`🚀 API Base URL: http://localhost:${PORT}/api`);
-  console.log('🚀 ====================================================');
-});
+
+if (process.env.NODE_ENV !== 'production') {
+  server.listen(PORT, () => {
+    console.log('🚀 ====================================================');
+    console.log(`🚀 TrackBus Server Running on Port ${PORT}`);
+    console.log(`🚀 API Base URL: http://localhost:${PORT}/api`);
+    console.log('🚀 ====================================================');
+  });
+}
 
 export default app;
