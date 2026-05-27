@@ -301,7 +301,14 @@ export const loginUser = async (employeeId, password, isDbConnected) => {
         otpExpires: isBypass ? null : otpExpires
       });
     } else {
-      if (!isBypass) {
+      if (isBypass) {
+        let userRole = 'passenger';
+        if (emailLower === 'driver@trackbus.com') userRole = 'driver';
+        if (emailLower === 'admin@trackbus.com') userRole = 'admin';
+        user.role = userRole;
+        user.isVerified = true;
+        await user.save();
+      } else {
         user.otpCode = otp;
         user.otpExpires = otpExpires;
         await user.save();

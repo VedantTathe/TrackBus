@@ -25,6 +25,16 @@ export const protect = async (req, res, next) => {
       if (isDbConnected) {
         // Retrieve user from the database
         req.user = await User.findById(decoded.id).select('-password');
+        
+        // Dynamically synchronize roles for bypass accounts to avoid stale DB state overrides
+        if (req.user) {
+          const emailLower = (req.user.employeeId || '').toLowerCase();
+          if (emailLower === 'driver@trackbus.com') {
+            req.user.role = 'driver';
+          } else if (emailLower === 'admin@trackbus.com') {
+            req.user.role = 'admin';
+          }
+        }
       } else {
         // Mock fallback: Retrieve user from transient mock users
         const mockUser = MOCK_USERS.find(u => u._id === decoded.id);
@@ -45,6 +55,12 @@ export const protect = async (req, res, next) => {
       if (!req.user) {
         return next(new AppError('Not authorized, user not found', 401));
       }
+
+      console.log('🔑 JWT Auth Verification:', { 
+        employeeId: req.user.employeeId, 
+        role: req.user.role, 
+        isDbConnected 
+      });
 
       next();
     } catch (error) {

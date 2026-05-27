@@ -13,6 +13,7 @@ import analyticsRoutes from './routes/analyticsRoutes.js';
 import tripRoutes from './routes/tripRoutes.js';
 import passengerRoutes from './routes/passengerRoutes.js';
 import { seedRoutesIfEmpty, seedBusesIfEmpty, MOCK_BUSES, SEED_ROUTES } from './controllers/busController.js';
+import { seedCitiesIfEmpty } from './services/cityService.js';
 import Bus from './models/Bus.js';
 import { globalErrorHandler } from './middleware/errorMiddleware.js';
 import { initSocket } from './socket/socketHandler.js';
@@ -43,6 +44,7 @@ const initializeBackend = async () => {
     // Seed Database with standard route vectors
     await seedRoutesIfEmpty();
     await seedBusesIfEmpty();
+    await seedCitiesIfEmpty();
   }
 };
 

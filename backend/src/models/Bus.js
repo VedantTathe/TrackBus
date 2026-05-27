@@ -12,6 +12,10 @@ const busSchema = new mongoose.Schema({
     required: [true, 'Route name is required'],
     trim: true,
   },
+  scheduledDepartureTime: {
+    type: String,
+    default: null, // e.g., "06:00" or "16:30"
+  },
   route: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Route',

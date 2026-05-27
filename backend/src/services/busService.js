@@ -4,192 +4,102 @@ import Route from '../models/Route.js';
 import { AppError } from '../utils/errors.js';
 import { MOCK_USERS } from './authService.js';
 
-// Pre-seeded Indian transit routes
+// Pre-seeded MSRTC transit routes — 2 official routes
 export const SEED_ROUTES = [
   {
     _id: '60c72b2f9b1d8b22a8a8e303',
-    routeName: 'Pune – Sangli Express',
+    routeName: 'Pune – Sangli Shivshahi',
     routeNumber: '303',
     startPoint: 'Pune',
     endPoint: 'Sangli',
     source: 'Pune',
     destination: 'Sangli',
-    busNumbers: ['MH12-9401', 'MH09-4560'],
+    busNumbers: [],
     stops: [
-      { name: 'Pune Central Bus Stand', arrivalTime: '06:00', departureTime: '06:10', lat: 18.5204, lng: 73.8567, sequence: 1 },
-      { name: 'Satara ST Stand', arrivalTime: '07:25', departureTime: '07:35', lat: 17.6805, lng: 73.9997, sequence: 2 },
-      { name: 'Karad Junction', arrivalTime: '08:25', departureTime: '08:30', lat: 17.2885, lng: 74.1812, sequence: 3 },
-      { name: 'Sangli Main ST', arrivalTime: '09:30', departureTime: null, lat: 16.8524, lng: 74.5815, sequence: 4 }
+      { name: 'Pune Swargate Stand', arrivalTime: '07:00', departureTime: '07:10', lat: 18.5018, lng: 73.8636, sequence: 1, isConfirmed: true },
+      { name: 'Satara ST Stand', arrivalTime: '08:35', departureTime: '08:40', lat: 17.6805, lng: 73.9997, sequence: 2, isConfirmed: true },
+      { name: 'Karad CBS', arrivalTime: '09:40', departureTime: '09:45', lat: 17.2885, lng: 74.1812, sequence: 3, isConfirmed: false },
+      { name: 'Sangli Main ST', arrivalTime: '10:45', departureTime: null, lat: 16.8524, lng: 74.5815, sequence: 4, isConfirmed: true }
     ],
     pathCoordinates: [
-      [18.5204, 73.8567],[18.2000, 73.9000],[17.9000, 73.9500],
-      [17.6805, 73.9997],[17.5000, 74.1000],[17.2885, 74.1812],
-      [17.0000, 74.3500],[16.8524, 74.5815]
-    ]
-  },
-  {
-    _id: '60c72b2f9b1d8b22a8a8e404',
-    routeName: 'Solapur – Pune Fast',
-    routeNumber: '404',
-    startPoint: 'Solapur',
-    endPoint: 'Pune',
-    source: 'Solapur',
-    destination: 'Pune',
-    busNumbers: ['MH13-7702'],
-    stops: [
-      { name: 'Solapur ST Depot', arrivalTime: '05:40', departureTime: '05:50', lat: 17.6868, lng: 75.9060, sequence: 1 },
-      { name: 'Barshi ST', arrivalTime: '06:55', departureTime: '07:05', lat: 18.2312, lng: 75.6939, sequence: 2 },
-      { name: 'Pandharpur Stand', arrivalTime: '07:45', departureTime: '07:55', lat: 17.6864, lng: 75.3296, sequence: 3 },
-      { name: 'Pune Swargate', arrivalTime: '09:40', departureTime: null, lat: 18.5018, lng: 73.8636, sequence: 4 }
-    ],
-    pathCoordinates: [
-      [17.6868, 75.9060],[17.9000, 75.7000],[18.0000, 75.5500],
-      [18.2312, 75.6939],[18.3000, 75.3000],[18.4000, 74.5000],
-      [18.5018, 73.8636]
-    ]
-  },
-  {
-    _id: '60c72b2f9b1d8b22a8a8e505',
-    routeName: 'Kolhapur – Sangli Link',
-    routeNumber: '505',
-    startPoint: 'Kolhapur',
-    endPoint: 'Sangli',
-    source: 'Kolhapur',
-    destination: 'Sangli',
-    busNumbers: ['MH09-3311'],
-    stops: [
-      { name: 'Kolhapur Central ST', arrivalTime: '08:10', departureTime: '08:20', lat: 16.7050, lng: 74.2433, sequence: 1 },
-      { name: 'Miraj Junction', arrivalTime: '09:05', departureTime: '09:15', lat: 16.8256, lng: 74.6593, sequence: 2 },
-      { name: 'Sangli Main ST', arrivalTime: '09:35', departureTime: null, lat: 16.8524, lng: 74.5815, sequence: 3 }
-    ],
-    pathCoordinates: [
-      [16.7050, 74.2433],[16.7600, 74.4000],
-      [16.8256, 74.6593],[16.8524, 74.5815]
+      [18.5018, 73.8636],
+      [17.6805, 73.9997],
+      [17.2885, 74.1812],
+      [16.8524, 74.5815]
     ]
   },
   {
     _id: '60c72b2f9b1d8b22a8a8e606',
-    routeName: 'Sangli – Gargoti Express',
+    routeName: 'Sangli – Kolhapur Ordinary',
     routeNumber: '606',
     startPoint: 'Sangli',
-    endPoint: 'Gargoti',
+    endPoint: 'Kolhapur',
     source: 'Sangli',
-    destination: 'Gargoti',
-    busNumbers: ['MH10-8899'],
+    destination: 'Kolhapur',
+    busNumbers: [],
     stops: [
-      { name: 'Sangli Main ST', arrivalTime: '10:40', departureTime: '10:50', lat: 16.8524, lng: 74.5815, sequence: 1 },
-      { name: 'Vishrambag', arrivalTime: '10:58', departureTime: '11:00', lat: 16.8437, lng: 74.6021, sequence: 2 },
-      { name: 'Miraj ST Stand', arrivalTime: '11:12', departureTime: '11:15', lat: 16.8256, lng: 74.6593, sequence: 3 },
-      { name: 'Jaysingpur', arrivalTime: '11:32', departureTime: '11:35', lat: 16.7865, lng: 74.5583, sequence: 4 },
-      { name: 'Hatkanangale', arrivalTime: '11:50', departureTime: '11:52', lat: 16.7483, lng: 74.4447, sequence: 5 },
-      { name: 'Kolhapur Central ST', arrivalTime: '12:15', departureTime: '12:25', lat: 16.7050, lng: 74.2433, sequence: 6 },
-      { name: 'Bidri (Sugar Factory)', arrivalTime: '12:55', departureTime: '12:57', lat: 16.4862, lng: 74.2185, sequence: 7 },
-      { name: 'Gargoti Bus Stand', arrivalTime: '13:20', departureTime: null, lat: 16.3197, lng: 74.1293, sequence: 8 }
+      { name: 'Sangli Main ST', arrivalTime: '08:00', departureTime: '08:05', lat: 16.8524, lng: 74.5815, sequence: 1, isConfirmed: true },
+      { name: 'Jaysingpur', arrivalTime: '08:22', departureTime: '08:24', lat: 16.7865, lng: 74.5583, sequence: 2, isConfirmed: false },
+      { name: 'Hatkanangale', arrivalTime: '08:40', departureTime: '08:42', lat: 16.7483, lng: 74.4447, sequence: 3, isConfirmed: false },
+      { name: 'Kolhapur CBS', arrivalTime: '09:10', departureTime: null, lat: 16.7050, lng: 74.2433, sequence: 4, isConfirmed: true }
     ],
     pathCoordinates: [
       [16.8524, 74.5815],
-      [16.8437, 74.6021],
-      [16.8256, 74.6593],
       [16.7865, 74.5583],
       [16.7483, 74.4447],
-      [16.7050, 74.2433],
-      [16.4862, 74.2185],
-      [16.3197, 74.1293]
+      [16.7050, 74.2433]
     ]
   }
 ];
 
-// Seeded local mock buses for offline/demo fallback — 4 test buses
+// Seeded local mock buses for offline/demo fallback — 2 official mock virtual timetabled buses
 export const MOCK_BUSES = [
   {
     _id: 'mock-bus-303a',
-    busNumber: 'MH12-9401',
-    routeName: 'Pune – Sangli Express',
-    capacity: 52,
-    assignedDriver: { _id: 'mock-driver-111', name: 'Ravi Patil', employeeId: 'driver@trackbus.com' },
-    status: 'active',
-    latitude: 18.5204,
-    longitude: 73.8567,
-    speed: 62,
-    heading: 200,
-    currentCrowd: 2,
-    lastUpdated: new Date()
-  },
-  {
-    _id: 'mock-bus-404a',
-    busNumber: 'MH13-7702',
-    routeName: 'Solapur – Pune Fast',
+    busNumber: 'Pune – Sangli Shivshahi [07:00]',
+    routeName: 'Pune – Sangli Shivshahi',
+    scheduledDepartureTime: '07:00',
     capacity: 45,
     assignedDriver: null,
     status: 'inactive',
-    latitude: 17.6868,
-    longitude: 75.9060,
+    latitude: 18.5018,
+    longitude: 73.8636,
     speed: 0,
-    heading: 270,
-    currentCrowd: 1,
-    lastUpdated: new Date()
-  },
-  {
-    _id: 'mock-bus-505a',
-    busNumber: 'MH09-3311',
-    routeName: 'Kolhapur – Sangli Link',
-    capacity: 48,
-    assignedDriver: null,
-    status: 'inactive',
-    latitude: 16.7050,
-    longitude: 74.2433,
-    speed: 0,
-    heading: 90,
+    heading: 0,
     currentCrowd: 1,
     lastUpdated: new Date()
   },
   {
     _id: 'mock-bus-606a',
-    busNumber: 'MH10-8899',
-    routeName: 'Sangli – Gargoti Express',
+    busNumber: 'Sangli – Kolhapur Ordinary [08:00]',
+    routeName: 'Sangli – Kolhapur Ordinary',
+    scheduledDepartureTime: '08:00',
     capacity: 50,
-    assignedDriver: { _id: 'mock-driver-111', name: 'Ravi Patil', employeeId: 'driver@trackbus.com' },
-    status: 'active',
+    assignedDriver: null,
+    status: 'inactive',
     latitude: 16.8524,
     longitude: 74.5815,
-    speed: 55,
-    heading: 240,
-    currentCrowd: 2,
+    speed: 0,
+    heading: 0,
+    currentCrowd: 1,
     lastUpdated: new Date()
   }
 ];
 
 export const seedRoutesIfEmpty = async () => {
   try {
-    const count = await Route.countDocuments();
-    if (count === 0) {
-      console.log('Seeding Indian transit routes...');
-      await Route.insertMany(SEED_ROUTES);
-      console.log('Routes seeded: Pune-Sangli, Solapur-Pune, Kolhapur-Sangli, Sangli-Kolhapur');
-      return;
+    let seededCount = 0;
+    for (const route of SEED_ROUTES) {
+      const exists = await Route.findOne({ routeNumber: route.routeNumber });
+      if (!exists) {
+        await Route.create(route);
+        seededCount++;
+      }
     }
-
-    const seedMap = new Map(SEED_ROUTES.map(r => [r.routeNumber, r]));
-    const routes = await Route.find({ routeNumber: { $in: Array.from(seedMap.keys()) } });
-    const existingNumbers = new Set(routes.map(r => r.routeNumber));
-    await Promise.all(routes.map(async (route) => {
-      const seed = seedMap.get(route.routeNumber);
-      if (!seed) return;
-      
-      route.routeName = seed.routeName;
-      route.startPoint = seed.startPoint;
-      route.endPoint = seed.endPoint;
-      route.source = seed.source;
-      route.destination = seed.destination;
-      route.busNumbers = seed.busNumbers;
-      route.stops = seed.stops;
-      route.pathCoordinates = seed.pathCoordinates;
-      await route.save();
-    }));
-
-    const missingRoutes = SEED_ROUTES.filter(r => !existingNumbers.has(r.routeNumber));
-    if (missingRoutes.length) {
-      await Route.insertMany(missingRoutes);
+    if (seededCount > 0) {
+      console.log(`Seeded exactly ${seededCount} real official MSRTC transit routes.`);
+    } else {
+      console.log('Official routes already present. Skipping routes seeding.');
     }
   } catch (error) {
     console.error('Failed to seed routes:', error.message);
@@ -199,44 +109,23 @@ export const seedRoutesIfEmpty = async () => {
 export const seedBusesIfEmpty = async () => {
   try {
     const seedBuses = [
-      { busNumber: 'MH12-9401', routeName: 'Pune – Sangli Express', capacity: 52, status: 'inactive', latitude: 18.5204, longitude: 73.8567 },
-      { busNumber: 'MH13-7702', routeName: 'Solapur – Pune Fast', capacity: 45, status: 'inactive', latitude: 17.6868, longitude: 75.9060 },
-      { busNumber: 'MH09-3311', routeName: 'Kolhapur – Sangli Link', capacity: 48, status: 'inactive', latitude: 16.7050, longitude: 74.2433 },
-      { busNumber: 'MH10-8899', routeName: 'Sangli – Gargoti Express', capacity: 50, status: 'active', latitude: 16.8524, longitude: 74.5815 }
+      { busNumber: 'Pune – Sangli Shivshahi [07:00]', routeName: 'Pune – Sangli Shivshahi', scheduledDepartureTime: '07:00', capacity: 45, status: 'inactive', latitude: 18.5018, longitude: 73.8636 },
+      { busNumber: 'Sangli – Kolhapur Ordinary [08:00]', routeName: 'Sangli – Kolhapur Ordinary', scheduledDepartureTime: '08:00', capacity: 50, status: 'inactive', latitude: 16.8524, longitude: 74.5815 }
     ];
 
-    const count = await Bus.countDocuments();
-    if (count === 0) {
-      console.log('Seeding 4 test buses...');
-      await Promise.all(seedBuses.map(async (b) => {
+    let seededCount = 0;
+    for (const b of seedBuses) {
+      const exists = await Bus.findOne({ busNumber: b.busNumber });
+      if (!exists) {
         const matchedRoute = await Route.findOne({ routeName: new RegExp(`^${b.routeName}$`, 'i') });
         await Bus.create({ ...b, route: matchedRoute?._id || null });
-      }));
-      console.log('Test buses seeded.');
-      return;
-    }
-
-    const seedBusMap = new Map(seedBuses.map(b => [b.busNumber, b]));
-    const existing = await Bus.find({ busNumber: { $in: Array.from(seedBusMap.keys()) } });
-    const existingNumbers = new Set(existing.map(b => b.busNumber));
-    
-    await Promise.all(existing.map(async (bus) => {
-      const seed = seedBusMap.get(bus.busNumber);
-      if (seed) {
-        bus.status = seed.status;
-        bus.routeName = seed.routeName;
-        const matchedRoute = await Route.findOne({ routeName: new RegExp(`^${seed.routeName}$`, 'i') });
-        bus.route = matchedRoute?._id || null;
-        await bus.save();
+        seededCount++;
       }
-    }));
-
-    const missing = seedBuses.filter(b => !existingNumbers.has(b.busNumber));
-    if (missing.length) {
-      await Promise.all(missing.map(async (b) => {
-        const matchedRoute = await Route.findOne({ routeName: new RegExp(`^${b.routeName}$`, 'i') });
-        await Bus.create({ ...b, route: matchedRoute?._id || null });
-      }));
+    }
+    if (seededCount > 0) {
+      console.log(`Seeded exactly ${seededCount} real official timetabled virtual buses.`);
+    } else {
+      console.log('Virtual buses already present. Skipping buses seeding.');
     }
   } catch (error) {
     console.error('Failed to seed buses:', error.message);
@@ -244,16 +133,16 @@ export const seedBusesIfEmpty = async () => {
 };
 
 export const createBus = async (busData, isDbConnected) => {
-  const { busNumber, routeName, capacity, status } = busData;
+  const { busNumber, routeName, capacity, status, scheduledDepartureTime } = busData;
   if (isDbConnected) {
     const busExists = await Bus.findOne({ busNumber });
     if (busExists) throw new AppError('A bus with this number already exists', 400);
     const matchedRoute = await Route.findOne({ routeName: new RegExp(`^${routeName}$`, 'i') });
-    return await Bus.create({ busNumber, routeName, route: matchedRoute?._id || null, capacity, status: status || 'inactive' });
+    return await Bus.create({ busNumber, routeName, route: matchedRoute?._id || null, capacity, status: status || 'inactive', scheduledDepartureTime });
   } else {
     if (MOCK_BUSES.find(b => b.busNumber.toUpperCase() === busNumber.toUpperCase())) throw new AppError('Bus already exists', 400);
     const routeObj = SEED_ROUTES.find(r => r.routeName.toLowerCase() === routeName.toLowerCase()) || SEED_ROUTES[0];
-    const newBus = { _id: `mock-bus-${Date.now()}`, busNumber, routeName, route: routeObj, capacity: Number(capacity), assignedDriver: null, status: status || 'inactive', latitude: 0, longitude: 0, speed: 0, heading: 0, currentCrowd: 1, lastUpdated: new Date() };
+    const newBus = { _id: `mock-bus-${Date.now()}`, busNumber, routeName, route: routeObj, capacity: Number(capacity), assignedDriver: null, status: status || 'inactive', scheduledDepartureTime, latitude: 0, longitude: 0, speed: 0, heading: 0, currentCrowd: 1, lastUpdated: new Date() };
     MOCK_BUSES.push(newBus);
     return newBus;
   }
@@ -333,17 +222,17 @@ export const updateCrowdStatus = async (busNumber, currentCrowd, isDbConnected) 
 };
 
 export const editBus = async (busId, updateData, isDbConnected) => {
-  const { busNumber, routeName, capacity, status } = updateData;
+  const { busNumber, routeName, capacity, status, scheduledDepartureTime } = updateData;
   if (isDbConnected) {
     const matchedRoute = await Route.findOne({ routeName: new RegExp(`^${routeName}$`, 'i') });
-    const updated = await Bus.findByIdAndUpdate(busId, { busNumber: busNumber.toUpperCase(), routeName, route: matchedRoute?._id || null, capacity: Number(capacity), status: status || 'inactive', currentStatus: status || 'inactive', lastUpdated: Date.now() }, { new: true }).populate('assignedDriver', 'name employeeId phone role');
+    const updated = await Bus.findByIdAndUpdate(busId, { busNumber: busNumber.toUpperCase(), routeName, route: matchedRoute?._id || null, capacity: Number(capacity), status: status || 'inactive', currentStatus: status || 'inactive', scheduledDepartureTime, lastUpdated: Date.now() }, { new: true }).populate('assignedDriver', 'name employeeId phone role');
     if (!updated) throw new AppError('Bus not found', 404);
     return updated;
   } else {
     const idx = MOCK_BUSES.findIndex(b => b._id === busId);
     if (idx === -1) throw new AppError('Bus not found', 404);
     const routeObj = SEED_ROUTES.find(r => r.routeName.toLowerCase() === routeName.toLowerCase()) || SEED_ROUTES[0];
-    Object.assign(MOCK_BUSES[idx], { busNumber: busNumber.toUpperCase(), routeName, route: routeObj, capacity: Number(capacity), status: status || 'inactive', lastUpdated: new Date() });
+    Object.assign(MOCK_BUSES[idx], { busNumber: busNumber.toUpperCase(), routeName, route: routeObj, capacity: Number(capacity), status: status || 'inactive', scheduledDepartureTime, lastUpdated: new Date() });
     return MOCK_BUSES[idx];
   }
 };

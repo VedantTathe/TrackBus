@@ -1,145 +1,851 @@
-import Trip from '../models/Trip.js';
+import LiveTrip from '../models/LiveTrip.js';
 import Bus from '../models/Bus.js';
 import Route from '../models/Route.js';
 import User from '../models/User.js';
+import { createHash } from 'crypto';
 import { AppError } from '../utils/errors.js';
 import { MOCK_BUSES, SEED_ROUTES } from './busService.js';
 import { MOCK_USERS } from './authService.js';
+import { fetchOsrmRoutes, fetchOsrmRouteThroughVia } from './osrmService.js';
+import { calculateDistance } from '../utils/geolocation.js';
+import { CITY_COORDINATES } from '../data/cityCoordinates.js';
 
-export const MOCK_TRIPS = [
-  {
-    _id: 'mock-trip-101',
-    busId: { _id: 'mock-bus-101', busNumber: 'TB-101', routeName: 'Seattle Core Link' },
-    driverId: { _id: 'mock-driver-111', name: 'Captain Alex', employeeId: 'driver@trackbus.com' },
-    routeId: { _id: '60c72b2f9b1d8b22a8a8e101', routeName: 'Seattle Core Link', routeNumber: '101' },
-    startTime: new Date(Date.now() - 3600000), // 1 hour ago
-    endTime: null,
-    tripStatus: 'active',
-    liveLocation: { latitude: 47.6205, longitude: -122.3493, speed: 35, heading: 135, lastUpdated: new Date() }
-  }
-];
+// Live trip in-memory list for mock mode fallback — cleared for Real-Mode Database Activation
+export const MOCK_LIVETRIPS = [];
+
+// For backward compatibility
+export const MOCK_TRIPS = MOCK_LIVETRIPS;
 
 /**
- * Start a live transit trip
+ * Calculate intermediate stops dynamically from OSRM path coordinates
  */
-export const startTrip = async (tripData, isDbConnected) => {
-  const { busId, driverId, routeId } = tripData;
+export const calculateIntermediateStops = (pathCoordinates, sourceName, destinationName, estimatedDuration) => {
+  if (!Array.isArray(pathCoordinates) || pathCoordinates.length === 0) {
+    return [];
+  }
 
-  if (isDbConnected) {
-    // 1. Verify bus exists
-    const bus = await Bus.findById(busId);
-    if (!bus) throw new AppError('Bus node not found in grid inventory', 404);
+  const srcLower = (sourceName || '').toLowerCase().trim();
+  const destLower = (destinationName || '').toLowerCase().trim();
+  const matchedStops = [];
 
-    // 2. Start Trip record
-    const trip = await Trip.create({
-      busId,
-      driverId,
-      routeId,
-      tripStatus: 'active',
-      startTime: new Date()
+  // For each city in the geo-dictionary
+  for (const [cityName, [cityLat, cityLng]] of Object.entries(CITY_COORDINATES)) {
+    // Skip source and destination cities themselves
+    if (cityName === srcLower || cityName === destLower) {
+      continue;
+    }
+
+    // Find the minimum distance and the index of the closest point along the route path
+    let minDistance = Infinity;
+    let closestIndex = -1;
+
+    for (let i = 0; i < pathCoordinates.length; i++) {
+      const [lat, lng] = pathCoordinates[i];
+      const dist = calculateDistance(cityLat, cityLng, lat, lng);
+      if (dist < minDistance) {
+        minDistance = dist;
+        closestIndex = i;
+      }
+    }
+
+    // If the city is within 12.0 km of the highway/route path (covers highway bypasses and tollways)
+    if (minDistance < 12.0) {
+      matchedStops.push({
+        name: cityName.charAt(0).toUpperCase() + cityName.slice(1), // Capitalize
+        lat: cityLat,
+        lng: cityLng,
+        closestIndex,
+        minDistance
+      });
+    }
+  }
+
+  // Sort matched stops by the index they appear along the path
+  matchedStops.sort((a, b) => a.closestIndex - b.closestIndex);
+
+  // Map to the stops schema and estimate arrival times
+  return matchedStops.map((stop, index) => {
+    // Estimate arrival time offset relative to the route sequence
+    const pathFraction = stop.closestIndex / Math.max(1, pathCoordinates.length - 1);
+    const durationOffset = Math.round(pathFraction * (estimatedDuration || 120));
+    
+    const baseHour = 8;
+    const baseMinute = 0;
+    const totalMinutes = baseHour * 60 + baseMinute + durationOffset;
+    const hrs = Math.floor(totalMinutes / 60) % 24;
+    const mins = totalMinutes % 60;
+    const arrivalTime = `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+
+    return {
+      name: stop.name,
+      lat: stop.lat,
+      lng: stop.lng,
+      sequence: index + 2, // Source is 1, so intermediate stops start at 2
+      arrivalTime,
+      departureTime: arrivalTime,
+      isConfirmed: false
+    };
+  });
+};
+
+
+/**
+ * Suggest route templates based on source and destination
+ */
+export const suggestRouteTemplates = async (source, destination, isDbConnected) => {
+  const srcClean = (source || '').trim();
+  const destClean = (destination || '').trim();
+
+  if (!srcClean || !destClean) {
+    return [];
+  }
+
+  const cachedRoutes = isDbConnected
+    ? await Route.find({
+      $or: [
+        {
+          source: new RegExp(`^${srcClean}$`, 'i'),
+          destination: new RegExp(`^${destClean}$`, 'i')
+        },
+        {
+          startPoint: new RegExp(`^${srcClean}$`, 'i'),
+          endPoint: new RegExp(`^${destClean}$`, 'i')
+        }
+      ]
+    })
+    : SEED_ROUTES.filter(r =>
+      (new RegExp(`^${srcClean}$`, 'i').test(r.source || r.startPoint)) &&
+      (new RegExp(`^${destClean}$`, 'i').test(r.destination || r.endPoint))
+    );
+
+  let osrmRoutes = [];
+  try {
+    const alternatives = await fetchOsrmRoutes(srcClean, destClean);
+    osrmRoutes = alternatives.map((route) => {
+      const hash = createHash('sha1')
+        .update(`${srcClean}|${destClean}|${route.distanceMeters}|${route.durationSeconds}|${route.index}`)
+        .digest('hex')
+        .slice(0, 10);
+
+      const routeNumber = `AUTO-${hash}`;
+      const pathCoordinates = Array.isArray(route.geometry?.coordinates)
+        ? route.geometry.coordinates.map(([lng, lat]) => [lat, lng])
+        : [];
+
+      const durationMin = Math.max(1, Math.round(route.durationSeconds / 60));
+      const distanceKm = Number((route.distanceMeters / 1000).toFixed(2));
+      
+      const intermediateStops = calculateIntermediateStops(pathCoordinates, srcClean, destClean, durationMin);
+
+      const stops = [
+        {
+          name: srcClean.charAt(0).toUpperCase() + srcClean.slice(1) + ' CBS',
+          lat: pathCoordinates[0]?.[0] || 0,
+          lng: pathCoordinates[0]?.[1] || 0,
+          sequence: 1,
+          arrivalTime: '08:00',
+          departureTime: '08:05',
+          isConfirmed: true
+        },
+        ...intermediateStops,
+        {
+          name: destClean.charAt(0).toUpperCase() + destClean.slice(1) + ' CBS',
+          lat: pathCoordinates[pathCoordinates.length - 1]?.[0] || 0,
+          lng: pathCoordinates[pathCoordinates.length - 1]?.[1] || 0,
+          sequence: intermediateStops.length + 2,
+          arrivalTime: (() => {
+            const baseHour = 8;
+            const baseMinute = 0;
+            const totalMinutes = baseHour * 60 + baseMinute + durationMin;
+            const hrs = Math.floor(totalMinutes / 60) % 24;
+            const mins = totalMinutes % 60;
+            return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+          })(),
+          departureTime: null,
+          isConfirmed: true
+        }
+      ];
+
+      return {
+        _id: `dynamic-${routeNumber}`,
+        routeName: `${srcClean} – ${destClean} Express`,
+        routeNumber,
+        startPoint: srcClean,
+        endPoint: destClean,
+        source: srcClean,
+        destination: destClean,
+        busNumbers: [],
+        stops,
+        pathCoordinates,
+        distanceKm,
+        estimatedDuration: durationMin,
+        dataSource: 'osrm'
+      };
     });
 
-    // 3. Mark bus status as active
-    bus.status = 'active';
-    bus.currentStatus = 'active';
-    bus.assignedDriver = driverId;
-    bus.currentDriver = driverId;
-    await bus.save();
+    // Check if we can dynamically find and generate a diverse via-point detour route!
+    if (osrmRoutes.length > 0) {
+      const primaryRoute = osrmRoutes[0];
+      const primaryCoords = primaryRoute.pathCoordinates;
 
-    return await Trip.findById(trip._id)
-      .populate('busId')
+      const startCoord = primaryCoords[0];
+      const endCoord = primaryCoords[primaryCoords.length - 1];
+
+      if (startCoord && endCoord) {
+        const directDistance = calculateDistance(startCoord[0], startCoord[1], endCoord[0], endCoord[1]);
+
+        // Find potential via point cities
+        const viableVias = [];
+        for (const [cityName, [cityLat, cityLng]] of Object.entries(CITY_COORDINATES)) {
+          if (cityName === srcClean.toLowerCase() || cityName === destClean.toLowerCase()) {
+            continue;
+          }
+
+          const distToStart = calculateDistance(cityLat, cityLng, startCoord[0], startCoord[1]);
+          const distToEnd = calculateDistance(cityLat, cityLng, endCoord[0], endCoord[1]);
+          const totalDetour = distToStart + distToEnd;
+
+          // Must be a reasonable detour ratio
+          if (totalDetour >= directDistance * 1.05 && totalDetour <= directDistance * 1.5) {
+            // Must not be too close to the primary direct route path
+            let minDistanceToPath = Infinity;
+            for (let i = 0; i < primaryCoords.length; i++) {
+              const d = calculateDistance(cityLat, cityLng, primaryCoords[i][0], primaryCoords[i][1]);
+              if (d < minDistanceToPath) minDistanceToPath = d;
+            }
+
+            if (minDistanceToPath > 12.0) {
+              viableVias.push({
+                name: cityName.charAt(0).toUpperCase() + cityName.slice(1),
+                lat: cityLat,
+                lng: cityLng,
+                detourRatio: totalDetour / directDistance
+              });
+            }
+          }
+        }
+
+        viableVias.sort((a, b) => a.detourRatio - b.detourRatio);
+        const bestVia = viableVias[0];
+
+        if (bestVia) {
+          try {
+            console.log(`Generating forced alternative route for ${srcClean} -> ${destClean} via ${bestVia.name}`);
+            const viaRoute = await fetchOsrmRouteThroughVia(srcClean, bestVia.name, destClean);
+
+            const pathCoordinates = Array.isArray(viaRoute.geometry?.coordinates)
+              ? viaRoute.geometry.coordinates.map(([lng, lat]) => [lat, lng])
+              : [];
+
+            const durationMin = Math.max(1, Math.round(viaRoute.durationSeconds / 60));
+            const distanceKm = Number((viaRoute.distanceMeters / 1000).toFixed(2));
+            const intermediateStops = calculateIntermediateStops(pathCoordinates, srcClean, destClean, durationMin);
+
+            const stops = [
+              {
+                name: srcClean.charAt(0).toUpperCase() + srcClean.slice(1) + ' CBS',
+                lat: pathCoordinates[0]?.[0] || 0,
+                lng: pathCoordinates[0]?.[1] || 0,
+                sequence: 1,
+                arrivalTime: '08:00',
+                departureTime: '08:05',
+                isConfirmed: true
+              },
+              ...intermediateStops,
+              {
+                name: destClean.charAt(0).toUpperCase() + destClean.slice(1) + ' CBS',
+                lat: pathCoordinates[pathCoordinates.length - 1]?.[0] || 0,
+                lng: pathCoordinates[pathCoordinates.length - 1]?.[1] || 0,
+                sequence: intermediateStops.length + 2,
+                arrivalTime: (() => {
+                  const baseHour = 8;
+                  const baseMinute = 0;
+                  const totalMinutes = baseHour * 60 + baseMinute + durationMin;
+                  const hrs = Math.floor(totalMinutes / 60) % 24;
+                  const mins = totalMinutes % 60;
+                  return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+                })(),
+                departureTime: null,
+                isConfirmed: true
+              }
+            ];
+
+            const hash = createHash('sha1')
+              .update(`${srcClean}|${destClean}|${viaRoute.distanceMeters}|${viaRoute.durationSeconds}|via-${bestVia.name}`)
+              .digest('hex')
+              .slice(0, 10);
+
+            const routeNumber = `AUTO-${hash}`;
+
+            osrmRoutes.push({
+              _id: `dynamic-${routeNumber}`,
+              routeName: `${srcClean} – ${destClean} (via ${bestVia.name}) Express`,
+              routeNumber,
+              startPoint: srcClean,
+              endPoint: destClean,
+              source: srcClean,
+              destination: destClean,
+              busNumbers: [],
+              stops,
+              pathCoordinates,
+              distanceKm,
+              estimatedDuration: durationMin,
+              dataSource: 'osrm'
+            });
+          } catch (err) {
+            console.warn(`Failed to fetch OSRM detour route via ${bestVia.name}:`, err.message);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('OSRM route fetch failed:', err.message || err);
+  }
+
+  const existingNumbers = new Set(cachedRoutes.map(r => r.routeNumber));
+  const uniqueOsrmRoutes = osrmRoutes.filter(r => !existingNumbers.has(r.routeNumber));
+
+  return [...cachedRoutes, ...uniqueOsrmRoutes];
+};
+
+/**
+ * Start a dynamic live trip session
+ */
+export const startLiveTrip = async (tripData, isDbConnected) => {
+  const { source, destination, driverId, busId, physicalBusId, selectedRouteTemplateId, customRouteDetails } = tripData;
+
+  if (!source || !destination || !driverId) {
+    throw new AppError('Please provide source, destination, and driver identification', 400);
+  }
+
+  const generatedTripId = `trip-${Date.now()}`;
+  const targetBusId = busId || physicalBusId;
+  let templateId = null;
+
+  if (customRouteDetails) {
+    // Generate a unique route number for this custom-edited route
+    const hash = createHash('sha1')
+      .update(`${source}|${destination}|${JSON.stringify(customRouteDetails.stops)}|${Date.now()}`)
+      .digest('hex')
+      .slice(0, 10);
+    const routeNumber = `CUSTOM-${hash}`;
+
+    if (isDbConnected) {
+      const newRoute = await Route.create({
+        routeName: customRouteDetails.routeName || `${source} – ${destination} Custom Express`,
+        routeNumber,
+        startPoint: source,
+        endPoint: destination,
+        source,
+        destination,
+        stops: customRouteDetails.stops,
+        pathCoordinates: customRouteDetails.pathCoordinates || [],
+        distanceKm: customRouteDetails.distanceKm || 0,
+        estimatedDuration: customRouteDetails.estimatedDuration || 120,
+        dataSource: 'manual'
+      });
+      templateId = newRoute._id;
+      console.log(`Saved newly custom-edited route to MongoDB: ${newRoute.routeName} (${newRoute.routeNumber})`);
+    } else {
+      // Mock Mode fallback
+      const mockRoute = {
+        _id: `custom-${routeNumber}`,
+        routeName: customRouteDetails.routeName || `${source} – ${destination} Custom Express`,
+        routeNumber,
+        startPoint: source,
+        endPoint: destination,
+        source,
+        destination,
+        stops: customRouteDetails.stops,
+        pathCoordinates: customRouteDetails.pathCoordinates || [],
+        distanceKm: customRouteDetails.distanceKm || 0,
+        estimatedDuration: customRouteDetails.estimatedDuration || 120,
+        dataSource: 'manual'
+      };
+      SEED_ROUTES.push(mockRoute);
+      templateId = mockRoute._id;
+      console.log(`Mock: Saved custom-edited route: ${mockRoute.routeName}`);
+    }
+  }
+
+  if (isDbConnected) {
+    let busDoc = null;
+    if (targetBusId) {
+      busDoc = await Bus.findById(targetBusId).populate('route');
+      if (!busDoc) throw new AppError('Timetabled virtual bus not found', 404);
+    }
+
+    if (!templateId) {
+      templateId = selectedRouteTemplateId || busDoc?.route?._id || busDoc?.route || null;
+
+      // Check if the selected template is a dynamic route (e.g. dynamic-AUTO-hash)
+      if (templateId && typeof templateId === 'string' && templateId.startsWith('dynamic-')) {
+        const routeNumber = templateId.replace('dynamic-', '');
+        // Check if it already got inserted into the database by another driver
+        let existingRoute = await Route.findOne({ routeNumber });
+        if (!existingRoute) {
+          // Re-generate OSRM routes for this source -> destination to find the matching one
+          const alternatives = await suggestRouteTemplates(source, destination, true);
+          const matched = alternatives.find(r => r.routeNumber === routeNumber);
+          if (matched) {
+            // Remove the temporary 'dynamic-' prefix _id so MongoDB assigns a real ObjectId
+            const routeToSave = { ...matched };
+            delete routeToSave._id;
+            
+            existingRoute = await Route.create(routeToSave);
+            console.log(`Saved dynamic OSRM route to MongoDB: ${existingRoute.routeName} (${existingRoute.routeNumber})`);
+          }
+        }
+        if (existingRoute) {
+          templateId = existingRoute._id;
+        } else {
+          templateId = null;
+        }
+      }
+    }
+
+    let initialLat = 18.5204;
+    let initialLng = 73.8567;
+
+    // Resolve initial coords from selectedRouteTemplateId stops if provided
+    if (templateId) {
+      const routeDoc = await Route.findById(templateId);
+      if (routeDoc?.stops?.length > 0) {
+        const sortedStops = [...routeDoc.stops].sort((a, b) => a.sequence - b.sequence);
+        const firstStop = sortedStops[0];
+        if (firstStop?.lat && firstStop?.lng && firstStop.lat !== 0 && firstStop.lng !== 0) {
+          initialLat = firstStop.lat;
+          initialLng = firstStop.lng;
+        }
+      } else if (routeDoc?.pathCoordinates?.length > 0) {
+        const [lat, lng] = routeDoc.pathCoordinates[0];
+        if (lat && lng) {
+          initialLat = lat;
+          initialLng = lng;
+        }
+      }
+    }
+
+    // 2. Create LiveTrip record
+    const trip = await LiveTrip.create({
+      tripId: generatedTripId,
+      source,
+      destination,
+      driverId,
+      physicalBusId: busDoc?._id || null,
+      selectedRouteTemplateId: templateId,
+      currentLocation: { lat: initialLat, lng: initialLng },
+      pathHistory: [{ lat: initialLat, lng: initialLng, timestamp: new Date() }],
+      isActive: true,
+      currentStatus: 'active',
+      startedAt: new Date(),
+      lastUpdatedAt: new Date()
+    });
+
+    // 3. Mark virtual timetabled bus status as active
+    if (busDoc) {
+      busDoc.status = 'active';
+      busDoc.currentStatus = 'active';
+      busDoc.assignedDriver = driverId;
+      busDoc.currentDriver = driverId;
+      busDoc.lastUpdated = new Date();
+      await busDoc.save();
+    }
+
+    return await LiveTrip.findById(trip._id)
       .populate('driverId', 'name employeeId phone')
-      .populate('routeId');
+      .populate('physicalBusId')
+      .populate('selectedRouteTemplateId');
   } else {
     // Mock Mode fallback
-    const mockBus = MOCK_BUSES.find(b => b._id === busId) || MOCK_BUSES[0];
-    const mockDriver = MOCK_USERS.find(u => u._id === driverId) || MOCK_USERS[0];
-    const mockRoute = SEED_ROUTES.find(r => r._id === routeId) || SEED_ROUTES[0];
+    const mockDriver = MOCK_USERS.find(u => u._id === driverId) || MOCK_USERS.find(u => u.role === 'driver') || { _id: driverId, name: 'Active Driver' };
+    const mockBus = targetBusId ? (MOCK_BUSES.find(b => b._id === targetBusId) || MOCK_BUSES[0]) : null;
+    
+    let mockRoute = SEED_ROUTES[0];
+    if (templateId) {
+      mockRoute = SEED_ROUTES.find(r => r._id === templateId) || SEED_ROUTES[0];
+    } else if (selectedRouteTemplateId) {
+      if (typeof selectedRouteTemplateId === 'string' && selectedRouteTemplateId.startsWith('dynamic-')) {
+        const routeNumber = selectedRouteTemplateId.replace('dynamic-', '');
+        const alternatives = await suggestRouteTemplates(source, destination, false);
+        const matched = alternatives.find(r => r.routeNumber === routeNumber);
+        if (matched) {
+          mockRoute = matched;
+        }
+      } else {
+        mockRoute = SEED_ROUTES.find(r => r._id === selectedRouteTemplateId) || SEED_ROUTES[0];
+      }
+    } else if (mockBus?.route) {
+      mockRoute = mockBus.route;
+    }
+
+    const initialLat = mockRoute?.stops?.[0]?.lat || 18.5204;
+    const initialLng = mockRoute?.stops?.[0]?.lng || 73.8567;
 
     const newMockTrip = {
-      _id: `mock-trip-${Date.now()}`,
-      busId: mockBus,
+      _id: `mock-ltrip-${Date.now()}`,
+      tripId: generatedTripId,
+      source,
+      destination,
       driverId: mockDriver,
-      routeId: mockRoute,
-      startTime: new Date(),
-      endTime: null,
-      tripStatus: 'active',
-      liveLocation: { latitude: mockBus.latitude || 47.62, longitude: mockBus.longitude || -122.34, speed: 0, heading: 0, lastUpdated: new Date() }
+      physicalBusId: mockBus,
+      selectedRouteTemplateId: mockRoute,
+      currentLocation: { lat: initialLat, lng: initialLng },
+      pathHistory: [
+        { lat: initialLat, lng: initialLng, timestamp: new Date() }
+      ],
+      occupancyLevel: 1,
+      speed: 0,
+      heading: 0,
+      startedAt: new Date(),
+      lastUpdatedAt: new Date(),
+      isActive: true,
+      routeConfidence: 100,
+      currentStatus: 'active'
     };
 
-    // Update mock bus to active
-    mockBus.status = 'active';
-    mockBus.assignedDriver = mockDriver;
+    if (mockBus) {
+      mockBus.status = 'active';
+      mockBus.currentStatus = 'active';
+      mockBus.assignedDriver = mockDriver;
+      mockBus.latitude = initialLat;
+      mockBus.longitude = initialLng;
+      mockBus.lastUpdated = new Date();
+    }
 
-    MOCK_TRIPS.push(newMockTrip);
+    MOCK_LIVETRIPS.push(newMockTrip);
     return newMockTrip;
   }
 };
 
 /**
- * End a live transit trip
+ * End a live trip session
  */
-export const endTrip = async (tripId, isDbConnected) => {
+export const endLiveTrip = async (tripId, isDbConnected) => {
   if (isDbConnected) {
-    const trip = await Trip.findById(tripId);
-    if (!trip) throw new AppError('Active trip node not found', 404);
+    const trip = await LiveTrip.findOne({ tripId, isActive: true });
+    if (!trip) {
+      // Fallback: check if we can query by Mongoose ObjectId
+      const tripByObjId = await LiveTrip.findById(tripId);
+      if (!tripByObjId) throw new AppError('Active live trip session not found', 404);
+      tripByObjId.isActive = false;
+      tripByObjId.currentStatus = 'completed';
+      tripByObjId.lastUpdatedAt = new Date();
+      await tripByObjId.save();
 
-    trip.tripStatus = 'completed';
-    trip.endTime = new Date();
+      // Release bus
+      if (tripByObjId.physicalBusId) {
+        const bus = await Bus.findById(tripByObjId.physicalBusId);
+        if (bus) {
+          bus.status = 'inactive';
+          bus.currentStatus = 'inactive';
+          await bus.save();
+        }
+      }
+      return tripByObjId;
+    }
+
+    trip.isActive = false;
+    trip.currentStatus = 'completed';
+    trip.lastUpdatedAt = new Date();
     await trip.save();
 
-    // Revert bus status back to inactive
-    const bus = await Bus.findById(trip.busId);
-    if (bus) {
-      bus.status = 'inactive';
-      bus.currentStatus = 'inactive';
-      await bus.save();
+    // Revert associated bus status back to inactive
+    if (trip.physicalBusId) {
+      const bus = await Bus.findById(trip.physicalBusId);
+      if (bus) {
+        bus.status = 'inactive';
+        bus.currentStatus = 'inactive';
+        await bus.save();
+      }
     }
 
     return trip;
   } else {
     // Mock Mode fallback
-    const idx = MOCK_TRIPS.findIndex(t => t._id === tripId);
-    if (idx === -1) throw new AppError('Active trip node not found (Mock)', 404);
+    const idx = MOCK_LIVETRIPS.findIndex(t => (t.tripId === tripId || t._id === tripId) && t.isActive);
+    if (idx === -1) throw new AppError('Active live trip session not found (Mock)', 404);
 
-    MOCK_TRIPS[idx].tripStatus = 'completed';
-    MOCK_TRIPS[idx].endTime = new Date();
+    MOCK_LIVETRIPS[idx].isActive = false;
+    MOCK_LIVETRIPS[idx].currentStatus = 'completed';
+    MOCK_LIVETRIPS[idx].lastUpdatedAt = new Date();
 
-    const mockBus = MOCK_BUSES.find(b => b._id === MOCK_TRIPS[idx].busId._id);
-    if (mockBus) {
-      mockBus.status = 'inactive';
-      mockBus.speed = 0;
+    if (MOCK_LIVETRIPS[idx].physicalBusId) {
+      const busNum = MOCK_LIVETRIPS[idx].physicalBusId.busNumber;
+      const mockBus = MOCK_BUSES.find(b => b.busNumber === busNum);
+      if (mockBus) {
+        mockBus.status = 'inactive';
+        mockBus.currentStatus = 'inactive';
+        mockBus.speed = 0;
+        mockBus.lastUpdated = new Date();
+      }
     }
 
-    return MOCK_TRIPS[idx];
+    return MOCK_LIVETRIPS[idx];
   }
 };
 
 /**
- * Fetch all active trips
+ * Update occupancy level for a trip
+ */
+export const updateOccupancy = async (tripId, occupancyLevel, isDbConnected) => {
+  const occ = Number(occupancyLevel);
+  if (isNaN(occ) || occ < 1 || occ > 4) {
+    throw new AppError('Invalid occupancy level. Must be between 1 and 4.', 400);
+  }
+
+  if (isDbConnected) {
+    const trip = await LiveTrip.findOne({ tripId, isActive: true });
+    if (!trip) throw new AppError('Active live trip session not found', 404);
+
+    trip.occupancyLevel = occ;
+    trip.lastUpdatedAt = new Date();
+    await trip.save();
+
+    // Also update currentCrowd on physical bus for backward compatibility
+    if (trip.physicalBusId) {
+      await Bus.findByIdAndUpdate(trip.physicalBusId, {
+        currentCrowd: occ,
+        lastUpdated: new Date()
+      });
+    }
+
+    return trip;
+  } else {
+    const idx = MOCK_LIVETRIPS.findIndex(t => t.tripId === tripId && t.isActive);
+    if (idx === -1) throw new AppError('Active live trip session not found (Mock)', 404);
+
+    MOCK_LIVETRIPS[idx].occupancyLevel = occ;
+    MOCK_LIVETRIPS[idx].lastUpdatedAt = new Date();
+
+    if (MOCK_LIVETRIPS[idx].physicalBusId) {
+      const busNum = MOCK_LIVETRIPS[idx].physicalBusId.busNumber;
+      const mockBus = MOCK_BUSES.find(b => b.busNumber === busNum);
+      if (mockBus) {
+        mockBus.currentCrowd = occ;
+        mockBus.lastUpdated = new Date();
+      }
+    }
+
+    return MOCK_LIVETRIPS[idx];
+  }
+};
+
+/**
+ * Fetch all active live trips
  */
 export const getActiveTrips = async (isDbConnected) => {
   if (isDbConnected) {
-    return await Trip.find({ tripStatus: 'active' })
-      .populate('busId')
+    return await LiveTrip.find({ isActive: true })
       .populate('driverId', 'name employeeId phone')
-      .populate('routeId');
+      .populate('physicalBusId')
+      .populate('selectedRouteTemplateId');
   } else {
-    return MOCK_TRIPS.filter(t => t.tripStatus === 'active');
+    return MOCK_LIVETRIPS.filter(t => t.isActive);
   }
 };
 
 /**
- * Fetch all trip histories
+ * Fetch completed trip audit logs
  */
 export const getTripHistory = async (isDbConnected) => {
   if (isDbConnected) {
-    return await Trip.find({ tripStatus: { $ne: 'active' } })
-      .populate('busId')
+    return await LiveTrip.find({ isActive: false })
       .populate('driverId', 'name employeeId phone')
-      .populate('routeId')
-      .sort({ endTime: -1 });
+      .populate('physicalBusId')
+      .populate('selectedRouteTemplateId')
+      .sort({ lastUpdatedAt: -1 });
   } else {
-    return MOCK_TRIPS.filter(t => t.tripStatus !== 'active');
+    return MOCK_LIVETRIPS.filter(t => !t.isActive);
   }
 };
+
+/**
+ * Get active trip for driver
+ */
+export const getActiveDriverTrip = async (driverId, isDbConnected) => {
+  if (isDbConnected) {
+    return await LiveTrip.findOne({ driverId, isActive: true })
+      .populate('driverId', 'name employeeId phone')
+      .populate('physicalBusId')
+      .populate('selectedRouteTemplateId');
+  } else {
+    return MOCK_LIVETRIPS.find(t => t.driverId._id === driverId && t.isActive) || null;
+  }
+};
+
+/**
+ * Submit or update a passenger occupancy vote for a trip
+ */
+export const submitPassengerOccupancyVote = async (tripId, passengerId, vote, isDbConnected) => {
+  const occ = Number(vote);
+  if (isNaN(occ) || occ < 1 || occ > 4) {
+    throw new AppError('Invalid occupancy level. Must be between 1 and 4.', 400);
+  }
+
+  const voteTimestamp = new Date();
+  const cutoffTime = new Date(Date.now() - 15 * 60 * 1000); // 15 minutes ago
+
+  if (isDbConnected) {
+    const trip = await LiveTrip.findOne({ tripId, isActive: true });
+    if (!trip) throw new AppError('Active live trip session not found', 404);
+
+    // Remove older votes by this passenger, or update existing, and filter by cutoff
+    trip.passengerOccupancyVotes = (trip.passengerOccupancyVotes || []).filter(
+      v => v.passengerId !== passengerId && v.timestamp >= cutoffTime
+    );
+
+    // Push new vote
+    trip.passengerOccupancyVotes.push({
+      passengerId,
+      vote: occ,
+      timestamp: voteTimestamp
+    });
+
+    // Clean up all votes older than 15 minutes
+    trip.passengerOccupancyVotes = trip.passengerOccupancyVotes.filter(
+      v => v.timestamp >= cutoffTime
+    );
+
+    // Aggregate votes: average of all passenger votes in the last 15 minutes
+    const validVotes = trip.passengerOccupancyVotes;
+    if (validVotes.length > 0) {
+      const sum = validVotes.reduce((acc, curr) => acc + curr.vote, 0);
+      trip.occupancyLevel = Math.round(sum / validVotes.length);
+    }
+
+    trip.lastUpdatedAt = new Date();
+    await trip.save();
+
+    // Update currentCrowd on physical bus for backward compatibility
+    if (trip.physicalBusId) {
+      await Bus.findByIdAndUpdate(trip.physicalBusId, {
+        currentCrowd: trip.occupancyLevel,
+        lastUpdated: new Date()
+      });
+    }
+
+    return trip;
+  } else {
+    // Mock Mode
+    const idx = MOCK_LIVETRIPS.findIndex(t => (t.tripId === tripId || t._id === tripId) && t.isActive);
+    if (idx === -1) throw new AppError('Active live trip session not found (Mock)', 404);
+
+    const trip = MOCK_LIVETRIPS[idx];
+
+    // Ensure passengerOccupancyVotes array exists
+    if (!trip.passengerOccupancyVotes) {
+      trip.passengerOccupancyVotes = [];
+    }
+
+    // Filter out old votes and existing vote from this passenger
+    trip.passengerOccupancyVotes = trip.passengerOccupancyVotes.filter(
+      v => v.passengerId !== passengerId && new Date(v.timestamp) >= cutoffTime
+    );
+
+    trip.passengerOccupancyVotes.push({
+      passengerId,
+      vote: occ,
+      timestamp: voteTimestamp
+    });
+
+    // Clean up
+    trip.passengerOccupancyVotes = trip.passengerOccupancyVotes.filter(
+      v => new Date(v.timestamp) >= cutoffTime
+    );
+
+    // Aggregate
+    const validVotes = trip.passengerOccupancyVotes;
+    if (validVotes.length > 0) {
+      const sum = validVotes.reduce((acc, curr) => acc + curr.vote, 0);
+      trip.occupancyLevel = Math.round(sum / validVotes.length);
+    }
+
+    trip.lastUpdatedAt = new Date();
+
+    if (trip.physicalBusId) {
+      const busNum = trip.physicalBusId.busNumber;
+      const mockBus = MOCK_BUSES.find(b => b.busNumber === busNum);
+      if (mockBus) {
+        mockBus.currentCrowd = trip.occupancyLevel;
+        mockBus.lastUpdated = new Date();
+      }
+    }
+
+    return trip;
+  }
+};
+
+/**
+ * Register a passenger check-in for a live trip session (DB level tracking)
+ */
+export const checkInPassenger = async (tripId, passengerId, isDbConnected) => {
+  const timestamp = new Date();
+
+  if (isDbConnected) {
+    const trip = await LiveTrip.findOne({ tripId, isActive: true });
+    if (!trip) throw new AppError('Active live trip session not found', 404);
+
+    // Initialize checkedInPassengers array if not exists
+    if (!trip.checkedInPassengers) {
+      trip.checkedInPassengers = [];
+    }
+
+    // Check if passenger already checked in
+    const exists = trip.checkedInPassengers.some(p => p.passengerId === passengerId);
+    if (!exists) {
+      trip.checkedInPassengers.push({ passengerId, timestamp });
+      trip.lastUpdatedAt = new Date();
+      await trip.save();
+    }
+    return trip;
+  } else {
+    // Mock Mode
+    const idx = MOCK_LIVETRIPS.findIndex(t => (t.tripId === tripId || t._id === tripId) && t.isActive);
+    if (idx === -1) throw new AppError('Active live trip session not found (Mock)', 404);
+
+    const trip = MOCK_LIVETRIPS[idx];
+    if (!trip.checkedInPassengers) {
+      trip.checkedInPassengers = [];
+    }
+
+    const exists = trip.checkedInPassengers.some(p => p.passengerId === passengerId);
+    if (!exists) {
+      trip.checkedInPassengers.push({ passengerId, timestamp });
+      trip.lastUpdatedAt = new Date();
+    }
+    return trip;
+  }
+};
+
+/**
+ * Remove a passenger check-in (check-out / stop tracking)
+ */
+export const checkOutPassenger = async (tripId, passengerId, isDbConnected) => {
+  if (isDbConnected) {
+    const trip = await LiveTrip.findOne({ tripId, isActive: true });
+    if (!trip) throw new AppError('Active live trip session not found', 404);
+
+    if (trip.checkedInPassengers) {
+      trip.checkedInPassengers = trip.checkedInPassengers.filter(p => p.passengerId !== passengerId);
+      trip.lastUpdatedAt = new Date();
+      await trip.save();
+    }
+    return trip;
+  } else {
+    // Mock Mode
+    const idx = MOCK_LIVETRIPS.findIndex(t => (t.tripId === tripId || t._id === tripId) && t.isActive);
+    if (idx === -1) throw new AppError('Active live trip session not found (Mock)', 404);
+
+    const trip = MOCK_LIVETRIPS[idx];
+    if (trip.checkedInPassengers) {
+      trip.checkedInPassengers = trip.checkedInPassengers.filter(p => p.passengerId !== passengerId);
+      trip.lastUpdatedAt = new Date();
+    }
+    return trip;
+  }
+};
+
+// For backward compatibility legacy references
+export const startTrip = startLiveTrip;
+export const endTrip = endLiveTrip;

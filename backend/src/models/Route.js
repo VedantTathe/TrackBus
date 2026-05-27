@@ -25,6 +25,10 @@ const stopSchema = new mongoose.Schema({
     type: Number,
     required: true,
   },
+  isConfirmed: {
+    type: Boolean,
+    default: true,
+  },
 });
 
 const routeSchema = new mongoose.Schema({
@@ -65,9 +69,18 @@ const routeSchema = new mongoose.Schema({
     type: [[Number]],
     default: [],
   },
+  distanceKm: {
+    type: Number,
+    default: null,
+  },
   estimatedDuration: {
     type: Number,
     default: 120,
+  },
+  dataSource: {
+    type: String,
+    enum: ['manual', 'osrm'],
+    default: 'manual',
   },
   createdAt: {
     type: Date,
