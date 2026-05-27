@@ -5,7 +5,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
-import { ArrowLeft, Bus, Gauge, Clock, MapPin, RefreshCw, Navigation, AlertCircle, Check, Shield, Sparkles, Smile, Radio, Vote } from 'lucide-react';
+import { ArrowLeft, Bus, Gauge, Clock, MapPin, RefreshCw, Navigation, AlertCircle, Check, Shield, Sparkles, Smile, Radio, Vote, User } from 'lucide-react';
 
 const CROWD_LABELS = { 1: 'Empty', 2: 'Seats Available', 3: 'Standing Room Only', 4: 'Full' };
 const CROWD_COLORS = { 1: '#16a34a', 2: '#1d4ed8', 3: '#d97706', 4: '#dc2626' };
@@ -68,7 +68,7 @@ export default function LiveTracking() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { socket } = useSocket();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   
   const mapRef = useRef(null);
   const mapInstance = useRef(null);
@@ -650,6 +650,38 @@ export default function LiveTracking() {
 
   // Fetch LiveTrip info (with backward compatibility fallback)
   useEffect(() => {
+    const addRecentTrip = (tripObj) => {
+      if (!tripObj) return;
+      const bus = tripObj.physicalBusId;
+      const busNumber = bus?.busNumber || tripObj.tripId;
+      const routeName = tripObj.selectedRouteTemplateId?.routeName || `${tripObj.source} – ${tripObj.destination}`;
+      
+      const clean = {
+        _id: bus?._id || tripObj._id || tripObj.tripId,
+        busNumber: busNumber,
+        routeName: routeName,
+        status: tripObj.isActive ? 'active' : 'inactive',
+        speed: tripObj.speed || 0,
+        latitude: tripObj.currentLocation?.lat || bus?.latitude || 0,
+        longitude: tripObj.currentLocation?.lng || bus?.longitude || 0,
+        currentCrowd: tripObj.occupancyLevel || bus?.currentCrowd || 1,
+        lastUpdated: tripObj.lastUpdatedAt || bus?.lastUpdated || null,
+        startTime: tripObj.startedAt || null,
+        endTime: null
+      };
+
+      const RECENT_KEY = 'trackbus_recent_buses';
+      let recent = [];
+      try {
+        const raw = localStorage.getItem(RECENT_KEY);
+        recent = raw ? JSON.parse(raw) : [];
+      } catch {}
+
+      const existing = recent.filter(b => b.busNumber !== clean.busNumber);
+      const next = [clean, ...existing].slice(0, 5);
+      localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+    };
+
     const fetchTripDetails = async () => {
       try {
         const res = await axios.get('/api/trips/active');
@@ -660,6 +692,7 @@ export default function LiveTracking() {
           setTrip(foundTrip);
           setLastUpdate(new Date(foundTrip.lastUpdatedAt || foundTrip.startedAt));
           setLoading(false);
+          addRecentTrip(foundTrip);
           return;
         }
 
@@ -684,6 +717,7 @@ export default function LiveTracking() {
           };
           setTrip(adapted);
           setLastUpdate(new Date(foundBus.lastUpdated || Date.now()));
+          addRecentTrip(adapted);
         }
       } catch (err) {
         console.warn('Failed to load tracking item:', err.message);
@@ -1001,30 +1035,39 @@ export default function LiveTracking() {
     <div className="page">
       {/* Topbar navigation banner */}
       <div className="topbar">
-        <button className="btn btn-ghost" onClick={() => navigate(-1)} style={{ padding: 8 }}>
-          <ArrowLeft size={18} />
-        </button>
-        <div style={{ display: 'flex', flex: 1, justifyContent: 'center', flexDirection: 'column', alignItems: 'center' }}>
-          <div style={{ fontWeight: 800, fontSize: '0.92rem', color: 'var(--text-primary)' }}>
-            {trip.source} → {displayDestination}
-          </div>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
-            Session ID: {trip.tripId}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button className="btn btn-ghost" onClick={() => navigate(-1)} style={{ padding: 8 }}>
+            <ArrowLeft size={18} />
+          </button>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <div style={{ fontWeight: 800, fontSize: '0.92rem', color: 'var(--text-primary)' }}>
+              {trip.source} → {displayDestination}
+            </div>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
+              Session ID: {trip.tripId}
+            </div>
           </div>
         </div>
-        <span className={`badge ${isActive ? 'badge-green' : 'badge-gray'}`} style={{ fontSize: '0.72rem' }}>
-          {isActive ? <><span className="live-dot" style={{ width: 5, height: 5 }} />Live Tracking</> : 'Completed'}
-        </span>
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span className={`badge ${isActive ? 'badge-green' : 'badge-gray'}`} style={{ fontSize: '0.72rem' }}>
+            {isActive ? <><span className="live-dot" style={{ width: 5, height: 5 }} />Live Tracking</> : 'Completed'}
+          </span>
+          <button className="btn btn-ghost" onClick={() => navigate('/profile')} style={{ padding: 8 }}>
+            <User size={16} />
+          </button>
+        </div>
       </div>
 
       {/* Main Map tracking area */}
       <div className="page-content" style={{ padding: 0 }}>
+        <div className="split-pane-container">
         
-        {/* Map Canvas with overlays */}
-        {isActive ? (
-          <div style={{ position: 'relative', height: 350, borderBottom: '1px solid var(--border)' }}>
-            {/* Map Canvas */}
-            <div ref={mapRef} className="map-container" style={{ height: '100%', borderRadius: 0 }} />
+          {/* Map Canvas with overlays */}
+          {isActive ? (
+            <div className="map-pane">
+              {/* Map Canvas */}
+              <div ref={mapRef} className="map-container" style={{ height: '100%', borderRadius: 0 }} />
 
             {/* Floating "Inside Bus?" Toggle Switch (Top Right Overlay - Non-Compulsory Option) */}
             <div style={{
@@ -1143,13 +1186,13 @@ export default function LiveTracking() {
             </div>
           </div>
         ) : (
-          <div style={{ height: 220, background: 'var(--bg-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 8, color: 'var(--text-muted)' }}>
-            <MapPin size={32} style={{ opacity: 0.3 }} />
-            <span style={{ fontSize: '0.85rem' }}>Live Trip Session Completed</span>
-          </div>
-        )}
+            <div className="map-pane" style={{ background: 'var(--bg-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 8, color: 'var(--text-muted)' }}>
+              <MapPin size={32} style={{ opacity: 0.3 }} />
+              <span style={{ fontSize: '0.85rem' }}>Live Trip Session Completed</span>
+            </div>
+          )}
 
-        <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div className="scrollable-info-pane">
           
           {/* Proximity Failure Onboarding Warning Banner */}
           {!inBus && onBoardWarning && isActive && (
@@ -1502,9 +1545,9 @@ export default function LiveTracking() {
               </div>
             )}
           </div>
-
         </div>
       </div>
+    </div>
 
 
       {/* Dynamic Passenger Contribution Success Modal */}

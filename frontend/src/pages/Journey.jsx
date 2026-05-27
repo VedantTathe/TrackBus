@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
-import { ArrowLeft, Bus, MapPin, Gauge, Clock, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, Bus, MapPin, Gauge, Clock, ShieldAlert, User } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 const parseTimeToMinutes = (timeStr) => {
   if (!timeStr) return null;
@@ -50,6 +51,7 @@ export default function Journey() {
   const { busNumber } = useParams(); // tripId or busNumber
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { logout } = useAuth();
   const [trip, setTrip] = useState(null);
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(null);
@@ -61,7 +63,7 @@ export default function Journey() {
       const res = await axios.get('/api/trips/active');
       const activeList = Array.isArray(res.data) ? res.data : [];
       const foundTrip = activeList.find(t => t.tripId === busNumber || t._id === busNumber || (t.physicalBusId && t.physicalBusId.busNumber === busNumber));
-      
+
       if (foundTrip) {
         setTrip(foundTrip);
         setLastUpdate(new Date(foundTrip.lastUpdatedAt || Date.now()));
@@ -111,7 +113,7 @@ export default function Journey() {
         const res = await axios.get('/api/trips/active');
         const activeList = Array.isArray(res.data) ? res.data : [];
         const foundTrip = activeList.find(t => t.tripId === trip.tripId);
-        
+
         if (foundTrip) {
           setTrip(foundTrip);
           setLastUpdate(new Date(foundTrip.lastUpdatedAt || Date.now()));
@@ -131,7 +133,7 @@ export default function Journey() {
           }));
           setLastUpdate(new Date(loc.timestamp || Date.now()));
         }
-      } catch {}
+      } catch { }
     };
 
     timer = setInterval(fetchLatestTelemetry, 6000);
@@ -142,7 +144,7 @@ export default function Journey() {
   const schedule = useMemo(() => {
     const routeTemplate = trip?.selectedRouteTemplateId;
     if (!routeTemplate?.stops?.length) return null;
-    
+
     let stops = [...routeTemplate.stops].sort((a, b) => a.sequence - b.sequence);
 
     // Personalize stops sequence: truncate up to passenger's searched destination stop
@@ -165,7 +167,7 @@ export default function Journey() {
 
     let currentIndex = 0;
     let currentDistanceKm = null;
-    
+
     const currentLat = trip?.currentLocation?.lat || trip?.latitude;
     const currentLng = trip?.currentLocation?.lng || trip?.longitude;
 
@@ -292,7 +294,7 @@ export default function Journey() {
 
     schedule.stops.forEach((stop, idx) => {
       const isConfirmed = stop.isConfirmed !== false; // default true if undefined
-      
+
       if (isConfirmed) {
         if (currentIntermediate.length > 0) {
           blocks.push({
@@ -302,7 +304,7 @@ export default function Journey() {
           });
           currentIntermediate = [];
         }
-        
+
         blocks.push({
           type: 'stop',
           stop,
@@ -371,21 +373,28 @@ export default function Journey() {
     <div className="page">
       {/* Topbar navigation banner */}
       <div className="topbar">
-        <button className="btn btn-ghost" onClick={() => navigate(-1)} style={{ padding: 8 }}>
-          <ArrowLeft size={18} />
-        </button>
-        <span className="topbar-title">Journey Timeline</span>
-        <button
-          className="btn btn-primary btn-sm"
-          style={{ padding: '6px 12px', fontSize: '0.75rem' }}
-          onClick={() => navigate(`/track/${trip.tripId}?${searchParams.toString()}`)}
-        >
-          Track Live Map
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button className="btn btn-ghost" onClick={() => navigate(-1)} style={{ padding: 8 }}>
+            <ArrowLeft size={18} />
+          </button>
+          <span className="topbar-title" style={{ fontSize: '1rem', fontWeight: 700 }}>Journey Timeline</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button
+            className="btn btn-primary btn-sm"
+            style={{ padding: '6px 12px', fontSize: '0.75rem' }}
+            onClick={() => navigate(`/track/${trip.tripId}?${searchParams.toString()}`)}
+          >
+            Track Live Map
+          </button>
+          <button className="btn btn-ghost" onClick={() => navigate('/profile')} style={{ padding: 8 }}>
+            <User size={16} />
+          </button>
+        </div>
       </div>
 
       {/* Primary timeline list */}
-      <div className="page-content">
+      <div className="page-content" style={{ maxWidth: 800, margin: '0 auto', width: '100%' }}>
         <div style={{ padding: '12px 0 6px' }}>
           <h2 style={{ fontSize: '1rem', fontWeight: 800 }}>{headerText}</h2>
           <p style={{ marginTop: 2, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
@@ -413,7 +422,7 @@ export default function Journey() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 14, position: 'relative', marginTop: 10 }}>
             {/* Timeline center line */}
             <div style={{ position: 'absolute', left: '50%', top: 10, bottom: 10, width: 2, background: 'var(--border)' }} />
-            
+
             {timelineBlocks.map((block) => {
               if (block.type === 'stop') {
                 const { stop, idx } = block;
@@ -422,41 +431,41 @@ export default function Journey() {
                 const isArrived = est?.status === 'arrived';
                 const isUpcoming = est?.status === 'upcoming';
                 const isSkipped = est?.status === 'skipped';
-                
+
                 return (
                   <div key={block.key} style={{ display: 'grid', gridTemplateColumns: '1.5fr 40px 1.5fr', alignItems: 'start', gap: 12, padding: '8px 0' }}>
-                        {/* Left Column: Actual/Estimated Arrival/Departure Card */}
-                        <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                          <div className="card" style={{ padding: '8px 10px', background: 'rgba(255,255,255,0.85)', borderRadius: 8, fontSize: '0.72rem', display: 'inline-block', border: '1px solid var(--border)', boxShadow: '0 2px 6px rgba(0,0,0,0.02)', backdropFilter: 'blur(4px)', width: '92%' }}>
-                            {isArrived ? (
-                              <>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, marginBottom: 2 }}>
-                                  <span style={{ color: 'var(--text-secondary)' }}>Arrived:</span>
-                                  <span style={{ color: 'var(--green)', fontWeight: 800 }}>{est?.arriveLabel || '—'}</span>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
-                                  <span style={{ color: 'var(--text-secondary)' }}>Departed:</span>
-                                  <span style={{ color: 'var(--green)', fontWeight: 800 }}>{est?.departLabel || '—'}</span>
-                                </div>
-                              </>
-                            ) : isSkipped ? (
-                              <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center', padding: '4px 0' }}>
-                                Bypassed Stop
-                              </div>
-                            ) : (
-                              <>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, marginBottom: 2 }}>
-                                  <span style={{ color: 'var(--text-secondary)' }}>Expected:</span>
-                                  <span style={{ color: 'var(--accent)', fontWeight: 800 }}>{est?.arriveLabel || '—'}</span>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
-                                  <span style={{ color: 'var(--text-secondary)' }}>Exp Depart:</span>
-                                  <span style={{ color: 'var(--accent)', fontWeight: 800 }}>{est?.departLabel || '—'}</span>
-                                </div>
-                              </>
-                            )}
+                    {/* Left Column: Actual/Estimated Arrival/Departure Card */}
+                    <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                      <div className="card" style={{ padding: '8px 10px', background: 'rgba(255,255,255,0.85)', borderRadius: 8, fontSize: '0.72rem', display: 'inline-block', border: '1px solid var(--border)', boxShadow: '0 2px 6px rgba(0,0,0,0.02)', backdropFilter: 'blur(4px)', width: '92%' }}>
+                        {isArrived ? (
+                          <>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, marginBottom: 2 }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Arrived:</span>
+                              <span style={{ color: 'var(--green)', fontWeight: 800 }}>{est?.arriveLabel || '—'}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Departed:</span>
+                              <span style={{ color: 'var(--green)', fontWeight: 800 }}>{est?.departLabel || '—'}</span>
+                            </div>
+                          </>
+                        ) : isSkipped ? (
+                          <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center', padding: '4px 0' }}>
+                            Bypassed Stop
                           </div>
-                        </div>
+                        ) : (
+                          <>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, marginBottom: 2 }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Expected:</span>
+                              <span style={{ color: 'var(--accent)', fontWeight: 800 }}>{est?.arriveLabel || '—'}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Exp Depart:</span>
+                              <span style={{ color: 'var(--accent)', fontWeight: 800 }}>{est?.departLabel || '—'}</span>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
 
                     {/* Middle Column: Bullet dot */}
                     <div style={{ display: 'flex', justifyContent: 'center', position: 'relative' }}>
@@ -499,7 +508,7 @@ export default function Journey() {
                 const isExpanded = expandedGaps[block.key];
                 return (
                   <div key={block.key} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    
+
                     {/* Gap Toggle Button */}
                     <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 40px 1.5fr', alignItems: 'center', gap: 12, padding: '4px 0' }}>
                       <div />
@@ -533,7 +542,7 @@ export default function Journey() {
                       const isArrived = est?.status === 'arrived';
                       const isUpcoming = est?.status === 'upcoming';
                       const isSkipped = est?.status === 'skipped';
-                      
+
                       return (
                         <div key={`stop-int-${stop.name}-${idx}`} style={{ display: 'grid', gridTemplateColumns: '1.5fr 40px 1.5fr', alignItems: 'start', gap: 12, padding: '6px 0', opacity: 0.95 }}>
                           {/* Left Column: Actual/Estimated Arrival/Departure Card */}

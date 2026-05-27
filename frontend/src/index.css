@@ -17,9 +17,9 @@
   --text-primary: #111827;
   --text-secondary: #6b7280;
   --text-muted: #9ca3af;
-  --accent: #1a56db;
-  --accent-light: #eff6ff;
-  --accent-hover: #1447c0;
+  --accent: #d32f2f;
+  --accent-light: #ffebee;
+  --accent-hover: #b71c1c;
   --green: #16a34a;
   --green-light: #f0fdf4;
   --red: #dc2626;
@@ -47,11 +47,17 @@ body {
 }
 
 #root {
-  max-width: 480px;
-  margin: 0 auto;
   min-height: 100dvh;
   background: var(--bg-subtle);
   position: relative;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  #root {
+    max-width: 480px;
+    margin: 0 auto;
+  }
 }
 
 /* Typography */
@@ -801,3 +807,290 @@ td {
 
 tr:last-child td { border-bottom: none; }
 tr:hover td { background: var(--bg-subtle); }
+
+/* Mobile-first Layout Defaults */
+.split-pane-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.map-pane {
+  height: 350px;
+  position: relative;
+  border-bottom: 1px solid var(--border);
+  width: 100%;
+}
+
+.scrollable-info-pane {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+/* ======================================================
+   TrackBus Premium Desktop Responsive Extension
+   ====================================================== */
+
+@media (min-width: 769px) {
+  /* Layout adjustments */
+  .page {
+    padding-bottom: 24px !important; /* remove bottom-nav spacing */
+    max-width: 1200px;
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  .page-content {
+    padding: 0 24px !important;
+  }
+
+  .topbar {
+    border-radius: 0 0 var(--radius-md) var(--radius-md);
+    margin-bottom: 16px;
+    box-shadow: var(--shadow-sm);
+  }
+
+  /* Hide bottom nav on desktop */
+  .bottom-nav {
+    display: none !important;
+  }
+
+  /* Responsive Grid System */
+  .grid-desktop-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+
+  .grid-desktop-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+  }
+
+  .grid-desktop-1-2 {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 20px;
+  }
+
+  .grid-desktop-2-1 {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 20px;
+  }
+
+  /* Map Split Pane (LiveTracking Dashboard) */
+  .split-pane-container {
+    display: flex;
+    gap: 24px;
+    height: calc(100vh - 100px);
+    overflow: hidden;
+    margin-top: 12px;
+  }
+
+  .map-pane {
+    flex: 1.4;
+    height: 100%;
+    position: relative;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+
+  .scrollable-info-pane {
+    flex: 1;
+    height: 100%;
+    overflow-y: auto;
+    padding-right: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  /* Interactive premium transitions */
+  .bus-card {
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s, border-color 0.2s;
+  }
+  .bus-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+  }
+  
+  /* Desktop Top Navbar layout */
+  .desktop-nav-links {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .desktop-nav-link {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-decoration: none;
+    padding: 6px 12px;
+    border-radius: var(--radius-sm);
+    transition: all 0.15s;
+  }
+
+  .desktop-nav-link:hover {
+    background: var(--accent-light);
+    color: var(--accent);
+  }
+
+  .desktop-nav-link.active {
+    background: var(--accent);
+    color: white;
+  }
+  
+  /* Premium Glass Card Style for Desktop Panels */
+  .premium-glass-card {
+    background: rgba(255, 255, 255, 0.85) !important;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.5) !important;
+    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.04) !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .desktop-nav-links {
+    display: none !important;
+  }
+}
+
+/* ======================================================
+   TrackBus Gorgeous Premium Login Page Layout
+   ====================================================== */
+
+.login-page-wrapper {
+  min-height: 100vh;
+  display: flex;
+  background: var(--bg);
+  width: 100vw;
+  margin: 0;
+  max-width: none !important;
+}
+
+.login-form-side {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 48px 24px;
+}
+
+.login-visual-side {
+  display: none;
+}
+
+@media (min-width: 769px) {
+  .login-page-wrapper {
+    flex-direction: row;
+    overflow: hidden;
+  }
+  
+  .login-form-side {
+    flex: 0 0 45%;
+    max-width: 540px;
+    justify-content: center;
+    border-left: 1px solid var(--border);
+    box-shadow: -10px 0 30px rgba(0, 0, 0, 0.02);
+    padding: 60px 48px;
+    background: var(--bg);
+    margin: 0 0 0 auto;
+  }
+  
+  .login-visual-side {
+    display: flex;
+    flex: 1;
+    background: linear-gradient(135deg, #111827 0%, #1e3a8a 50%, #1d4ed8 100%);
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 80px;
+    color: white;
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .login-visual-pattern {
+    position: absolute;
+    inset: 0;
+    opacity: 0.06;
+    background-image: radial-gradient(circle at 1px 1px, white 1px, transparent 0);
+    background-size: 24px 24px;
+    pointer-events: none;
+  }
+  
+  .login-visual-glow {
+    position: absolute;
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(circle, rgba(29,78,216,0.15) 0%, rgba(255,255,255,0) 70%);
+    top: -200px;
+    left: -200px;
+    pointer-events: none;
+  }
+  
+  .login-visual-title {
+    font-size: 3rem;
+    font-weight: 800;
+    line-height: 1.15;
+    letter-spacing: -0.04em;
+    margin-bottom: 20px;
+    background: linear-gradient(to right, #ffffff, #93c5fd);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  
+  .login-visual-desc {
+    font-size: 1.1rem;
+    color: #9ca3af;
+    max-width: 480px;
+    line-height: 1.6;
+    margin-bottom: 40px;
+  }
+  
+  .login-feature-card {
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-md);
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    max-width: 480px;
+    transition: all 0.3s;
+  }
+  
+  .login-feature-card:hover {
+    background: rgba(255, 255, 255, 0.12);
+    transform: translateX(4px);
+  }
+  
+  .login-feature-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+  }
+}
+
+/* PWA Mobile-only utility classes */
+@media (min-width: 769px) {
+  .mobile-only {
+    display: none !important;
+  }
+}

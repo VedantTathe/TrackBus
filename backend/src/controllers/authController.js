@@ -64,3 +64,16 @@ export const getProfile = catchAsync(async (req, res, next) => {
   
   res.status(200).json(profile);
 });
+
+/**
+ * @desc    Approve a driver
+ * @route   PUT /api/auth/approve-driver
+ * @access  Private (Private API utility)
+ */
+export const approveDriver = catchAsync(async (req, res, next) => {
+  const { employeeId } = req.body;
+  const isDbConnected = req.app.get('isDbConnected');
+  const result = await authService.approveDriverUser(employeeId, isDbConnected);
+  
+  res.status(200).json(result);
+});

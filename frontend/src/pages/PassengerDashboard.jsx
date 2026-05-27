@@ -118,7 +118,7 @@ function BusCard({ bus, onTrack }) {
 
 export default function PassengerDashboard() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, logout, isInstallable, installApp } = useAuth();
 
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -143,7 +143,7 @@ export default function PassengerDashboard() {
       .then(res => {
         if (res.data?.cities) setCities(res.data.cities);
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const handleSearch = async (e) => {
@@ -210,6 +210,7 @@ export default function PassengerDashboard() {
           <div className="topbar-logo-icon"><Bus size={15} /></div>
           <span className="topbar-logo-text">TrackBus</span>
         </div>
+
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button className="btn btn-ghost" onClick={() => navigate('/profile')} style={{ padding: 8 }}>
             <User size={16} />
@@ -220,86 +221,141 @@ export default function PassengerDashboard() {
       <div className="page-content">
         {/* Greeting */}
         <div style={{ padding: '16px 0 4px' }}>
-          <h2 style={{ fontSize: '1.1rem' }}>Hello, {user?.name?.split(' ')[0] || 'Traveller'} 👋</h2>
-          <p style={{ fontSize: '0.82rem', marginTop: 2 }}>Where are you headed today?</p>
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 800 }}>Hello, {user?.name?.split(' ')[0] || 'Traveller'} 👋</h2>
+          <p style={{ fontSize: '0.85rem', marginTop: 2, color: 'var(--text-secondary)' }}>Where are you headed today?</p>
         </div>
 
-        {/* Search — Corridor Search */}
-        <div className="sticky-search">
-          <form onSubmit={handleSearch} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <div style={{ flex: 1 }}>
-                <input
-                  className="input"
-                  value={from}
-                  onChange={e => {
-                    setFrom(e.target.value);
-                    if (errorMsg) setErrorMsg('');
-                  }}
-                  placeholder="From (e.g. Pune)"
-                  list="city-list"
-                />
+        {/* PWA Mobile Install App Banner */}
+        {isInstallable && (
+          <div
+            className="mobile-only alert alert-info"
+            style={{
+              marginTop: 6,
+              marginBottom: 10,
+              background: 'linear-gradient(135deg, var(--accent) 0%, #b71c1c 100%)',
+              color: 'white',
+              border: 'none',
+              borderRadius: 12,
+              padding: '12px 14px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              boxShadow: '0 4px 12px rgba(211, 47, 47, 0.2)'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: '1.2rem' }}>📱</span>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: '0.82rem' }}>TrackBus MSRTC App</div>
+                <div style={{ fontSize: '0.72rem', opacity: 0.9, marginTop: 1 }}>Install our app for fast, live bus updates!</div>
               </div>
-              <div style={{ flex: 1 }}>
-                <input
-                  className="input"
-                  value={to}
-                  onChange={e => {
-                    setTo(e.target.value);
-                    if (errorMsg) setErrorMsg('');
-                  }}
-                  placeholder="To (e.g. Sangli)"
-                  list="city-list"
-                />
-              </div>
-              <button type="submit" className="btn btn-primary" style={{ padding: '11px 14px' }}>
-                <Search size={14} />
-              </button>
             </div>
-          </form>
-
-          {errorMsg && (
-            <div className="alert alert-danger" style={{ fontSize: '0.78rem', padding: '8px 12px', marginTop: 8, borderRadius: 8 }}>
-              {errorMsg}
-            </div>
-          )}
-
-          <datalist id="city-list">
-            {cities.map(city => (
-              <option key={city} value={city} />
-            ))}
-          </datalist>
-
-          {/* Quick routes */}
-          <div className="chip-list" style={{ marginTop: 8 }}>
-            {QUICK_ROUTES.map(qr => (
-              <button key={qr.label} className="chip" onClick={() => handleQuickRoute(qr)}>
-                <Navigation size={11} />{qr.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Results / List */}
-        <div className="section-header">
-          <span className="section-title">Recent Transits</span>
-        </div>
-
-        {displayBuses.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-icon"><Bus size={24} /></div>
-            <h3>No recent transits yet</h3>
-            <p>Search for a corridor or track one to see it here</p>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingBottom: 8 }}>
-            {displayBuses.map(bus => (
-              <BusCard key={bus._id || bus.busNumber} bus={bus} onTrack={handleTrack} />
-            ))}
+            <button
+              className="btn btn-sm btn-primary"
+              onClick={installApp}
+              style={{ background: 'white', color: 'var(--accent)', borderRadius: 20, padding: '4px 12px', fontSize: '0.74rem', fontWeight: 800 }}
+            >
+              Install App
+            </button>
           </div>
         )}
-      </div>
 
+        {/* Responsive Grid Panel */}
+        <div className="grid-desktop-2-1" style={{ marginTop: 12 }}>
+
+          {/* Left Column: Search Corridor and Filters */}
+          <div>
+            <div className="card premium-glass-card" style={{ padding: '20px 18px', border: '1px solid var(--border)' }}>
+              <div style={{ marginBottom: 16, fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Search Transit Corridors
+              </div>
+              <form onSubmit={handleSearch} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    <div style={{ flex: 1 }}>
+                      <label className="input-label" style={{ marginBottom: 4, display: 'block' }}>Origin</label>
+                      <input
+                        className="input"
+                        value={from}
+                        onChange={e => {
+                          setFrom(e.target.value);
+                          if (errorMsg) setErrorMsg('');
+                        }}
+                        placeholder="From (e.g. Pune)"
+                        list="city-list"
+                      />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label className="input-label" style={{ marginBottom: 4, display: 'block' }}>Destination</label>
+                      <input
+                        className="input"
+                        value={to}
+                        onChange={e => {
+                          setTo(e.target.value);
+                          if (errorMsg) setErrorMsg('');
+                        }}
+                        placeholder="To (e.g. Sangli)"
+                        list="city-list"
+                      />
+                    </div>
+                  </div>
+                  <button type="submit" className="btn btn-primary btn-full btn-lg" style={{ marginTop: 4 }}>
+                    <Search size={16} /> Search Routes
+                  </button>
+                </div>
+              </form>
+
+              {errorMsg && (
+                <div className="alert alert-danger" style={{ fontSize: '0.78rem', padding: '8px 12px', marginTop: 12, borderRadius: 8 }}>
+                  {errorMsg}
+                </div>
+              )}
+
+              <datalist id="city-list">
+                {cities.map(city => (
+                  <option key={city} value={city} />
+                ))}
+              </datalist>
+
+              {/* Quick routes */}
+              <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
+                  Popular Corridors
+                </div>
+                <div className="chip-list">
+                  {QUICK_ROUTES.map(qr => (
+                    <button key={qr.label} className="chip" onClick={() => handleQuickRoute(qr)}>
+                      <Navigation size={11} />{qr.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column: Recent Transits List */}
+          <div>
+            <div className="section-header" style={{ paddingTop: 0 }}>
+              <span className="section-title">Recent Transits</span>
+            </div>
+
+            {displayBuses.length === 0 ? (
+              <div className="empty-state card premium-glass-card" style={{ padding: '36px 24px', border: '1px solid var(--border)' }}>
+                <div className="empty-icon"><Bus size={24} /></div>
+                <h3>No recent transits</h3>
+                <p>Search for a corridor or track one to see it here</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {displayBuses.map(bus => (
+                  <BusCard key={bus._id || bus.busNumber} bus={bus} onTrack={handleTrack} />
+                ))}
+              </div>
+            )}
+          </div>
+
+        </div>
+      </div>
     </div>
   );
 }

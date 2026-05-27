@@ -266,7 +266,7 @@ export const removeDriverFromBus = async (busNumber, isDbConnected) => {
 };
 
 export const getActiveDriversList = async (isDbConnected) => {
-  if (isDbConnected) return await User.find({ role: 'driver' }).select('name employeeId phone role');
+  if (isDbConnected) return await User.find({ role: 'driver' }).select('name employeeId phone role isApproved');
   return MOCK_USERS.filter(u => u.role === 'driver');
 };
 

@@ -107,6 +107,22 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleApproveDriver = async (employeeId) => {
+    if (!window.confirm(`Approve driver account for Employee ID: ${employeeId}?`)) return;
+    setSaving(true);
+    setError('');
+    try {
+      const res = await axios.put('/api/auth/approve-driver', { employeeId });
+      setSuccess(res.data.message || 'Driver approved successfully');
+      await loadAll();
+    } catch (e) {
+      setError(e.response?.data?.message || 'Error approving driver');
+    } finally {
+      setSaving(false);
+      setTimeout(() => setSuccess(''), 3000);
+    }
+  };
+
   const CROWD_LABELS = { 1: 'Empty', 2: 'Seats Avail.', 3: 'Standing', 4: 'Full' };
 
   return (
@@ -128,73 +144,85 @@ export default function AdminDashboard() {
 
         <div style={{ padding: '14px 0 8px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <h2>Fleet Manager</h2>
-            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{user?.employeeId}</span>
+            <h2>Fleet Manager Command Center</h2>
+            <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 600 }}>ID: {user?.employeeId}</span>
           </div>
-          <div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: '0.82rem' }}>
-            <span style={{ color: 'var(--text-secondary)' }}><strong style={{ color: 'var(--text-primary)' }}>{buses.length}</strong> buses</span>
-            <span style={{ color: 'var(--text-secondary)' }}><strong style={{ color: 'var(--green)' }}>{buses.filter(b => b.status === 'active').length}</strong> live</span>
-            <span style={{ color: 'var(--text-secondary)' }}><strong style={{ color: 'var(--text-primary)' }}>{routes.length}</strong> routes</span>
+          
+          {/* Responsive Fleet Command Metrics Cards */}
+          <div className="grid-desktop-3" style={{ marginTop: 16, marginBottom: 12 }}>
+            <div className="card premium-glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: 6, border: '1px solid var(--border)' }}>
+              <span style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Registered Fleet</span>
+              <strong style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--text-primary)' }}>{buses.length} Buses</strong>
+            </div>
+            <div className="card premium-glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: 6, borderLeft: '4px solid var(--green)', borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--green)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Active Broadcasts</span>
+              <strong style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--green)' }}>{buses.filter(b => b.status === 'active').length} Live</strong>
+            </div>
+            <div className="card premium-glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: 6, border: '1px solid var(--border)' }}>
+              <span style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Configured Corridors</span>
+              <strong style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--accent)' }}>{routes.length} Routes</strong>
+            </div>
           </div>
         </div>
 
         {/* Tabs */}
-        <div className="tabs" style={{ marginBottom: 12 }}>
+        <div className="tabs" style={{ marginBottom: 16 }}>
           {TABS.map(t => (
-            <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>{t}</button>
+            <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)} style={{ padding: '10px 8px', fontSize: '0.85rem' }}>{t}</button>
           ))}
         </div>
 
         {loading ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {[1, 2, 3].map(i => <div key={i} className="skeleton" style={{ height: 80, borderRadius: 10 }} />)}
+          <div className="grid-desktop-3" style={{ gap: 12 }}>
+            {[1, 2, 3].map(i => <div key={i} className="skeleton" style={{ height: 100, borderRadius: 10 }} />)}
           </div>
         ) : (
           <>
             {/* BUSES TAB */}
             {tab === 'Buses' && (
               <>
-                <button className="btn btn-primary btn-full mb-2" onClick={() => openModal('bus', {})} style={{ marginBottom: 10 }}>
-                  <Plus size={15} /> Add Bus
+                <button className="btn btn-primary btn-full mb-2" onClick={() => openModal('bus', {})} style={{ marginBottom: 12, padding: '12px' }}>
+                  <Plus size={16} /> Add New Bus to Fleet
                 </button>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div className="grid-desktop-3" style={{ gap: 12 }}>
                   {buses.map(bus => (
-                    <div key={bus._id} className="card" style={{ padding: '12px 14px' }}>
-                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                    <div key={bus._id} className="card premium-glass-card" style={{ padding: '14px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: 140, border: '1px solid var(--border)' }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', width: '100%' }}>
                         <div style={{ flex: 1 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-                            <span style={{ fontWeight: 700 }}>{bus.busNumber}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                            <span style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--text-primary)' }}>{bus.busNumber}</span>
                             <span className={`badge ${bus.status === 'active' ? 'badge-green' : 'badge-gray'}`} style={{ fontSize: '0.68rem' }}>
                               {bus.status === 'active' ? 'Live' : 'Inactive'}
                             </span>
                           </div>
                           <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{bus.routeName}</div>
                           {bus.assignedDriver && (
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                              Driver: {bus.assignedDriver.name || bus.assignedDriver.employeeId}
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                              Driver: <strong style={{ color: 'var(--text-secondary)' }}>{bus.assignedDriver.name || bus.assignedDriver.employeeId}</strong>
                             </div>
                           )}
                           {bus.status === 'active' && (
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                              {bus.speed || 0} km/h · {CROWD_LABELS[bus.currentCrowd] || '—'}
+                            <div style={{ fontSize: '0.75rem', color: 'var(--green)', fontWeight: 600, marginTop: 4 }}>
+                              Speed: {bus.speed || 0} km/h · {CROWD_LABELS[bus.currentCrowd] || '—'}
                             </div>
                           )}
                         </div>
-                        <div style={{ display: 'flex', gap: 4 }}>
-                          <button className="btn btn-ghost btn-sm" onClick={() => openModal('assignDriver', { busNumber: bus.busNumber })} title="Assign Driver">
-                            <Users size={13} />
-                          </button>
-                          <button className="btn btn-ghost btn-sm" onClick={() => openModal('bus', { _id: bus._id, busNumber: bus.busNumber, routeName: bus.routeName, capacity: bus.capacity, status: bus.status })}>
-                            <Edit size={13} />
-                          </button>
-                          <button className="btn btn-ghost btn-sm" onClick={() => handleDeleteBus(bus._id)} style={{ color: 'var(--red)' }}>
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
+                      </div>
+                      
+                      <div style={{ display: 'flex', gap: 6, borderTop: '1px dashed var(--border)', paddingTop: 10, marginTop: 10, justifyContent: 'flex-end' }}>
+                        <button className="btn btn-secondary btn-sm" onClick={() => openModal('assignDriver', { busNumber: bus.busNumber })} title="Assign Driver" style={{ padding: '6px 10px' }}>
+                          <Users size={13} />
+                        </button>
+                        <button className="btn btn-secondary btn-sm" onClick={() => openModal('bus', { _id: bus._id, busNumber: bus.busNumber, routeName: bus.routeName, capacity: bus.capacity, status: bus.status })} style={{ padding: '6px 10px' }}>
+                          <Edit size={13} />
+                        </button>
+                        <button className="btn btn-secondary btn-sm" onClick={() => handleDeleteBus(bus._id)} style={{ color: 'var(--red)', padding: '6px 10px', background: 'var(--red-light)', borderColor: 'rgba(220, 38, 38, 0.15)' }}>
+                          <Trash2 size={13} />
+                        </button>
                       </div>
                     </div>
                   ))}
-                  {buses.length === 0 && <div className="empty-state"><div className="empty-icon"><Bus size={22} /></div><p>No buses yet</p></div>}
+                  {buses.length === 0 && <div className="empty-state" style={{ gridColumn: 'span 3' }}><div className="empty-icon"><Bus size={22} /></div><p>No buses yet</p></div>}
                 </div>
               </>
             )}
@@ -202,53 +230,101 @@ export default function AdminDashboard() {
             {/* ROUTES TAB */}
             {tab === 'Routes' && (
               <>
-                <button className="btn btn-primary btn-full mb-2" onClick={() => openModal('route', {})} style={{ marginBottom: 10 }}>
-                  <Plus size={15} /> Add Route
+                <button className="btn btn-primary btn-full mb-2" onClick={() => openModal('route', {})} style={{ marginBottom: 12, padding: '12px' }}>
+                  <Plus size={16} /> Create New Transit Route
                 </button>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div className="grid-desktop-3" style={{ gap: 12 }}>
                   {routes.map(route => (
-                    <div key={route._id} className="card" style={{ padding: '12px 14px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{route.routeName}</div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 1 }}>#{route.routeNumber}</div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                            <span>{route.source || route.startPoint}</span>
-                            <ChevronRight size={11} />
-                            <span>{route.destination || route.endPoint}</span>
+                    <div key={route._id} className="card premium-glass-card" style={{ padding: '14px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: 140, border: '1px solid var(--border)' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 4 }}>
+                          <div style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--text-primary)' }}>{route.routeName}</div>
+                          <span className="badge badge-gray" style={{ fontSize: '0.68rem', fontWeight: 700 }}>#{route.routeNumber}</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 6, fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                          <strong>{route.source || route.startPoint}</strong>
+                          <ChevronRight size={11} />
+                          <strong>{route.destination || route.endPoint}</strong>
+                        </div>
+                        {route.busNumbers?.length > 0 && (
+                          <div style={{ marginTop: 8, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                            {route.busNumbers.map(b => <span key={b} className="badge badge-blue" style={{ fontSize: '0.65rem' }}>{b}</span>)}
                           </div>
-                          {route.busNumbers?.length > 0 && (
-                            <div style={{ marginTop: 4, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                              {route.busNumbers.map(b => <span key={b} className="badge badge-blue" style={{ fontSize: '0.65rem' }}>{b}</span>)}
-                            </div>
-                          )}
-                        </div>
-                        <div style={{ display: 'flex', gap: 4 }}>
-                          <button className="btn btn-ghost btn-sm" onClick={() => openModal('route', { ...route })}>
-                            <Edit size={13} />
-                          </button>
-                        </div>
+                        )}
+                      </div>
+                      
+                      <div style={{ display: 'flex', justifycontent: 'flex-end', borderTop: '1px dashed var(--border)', paddingTop: 10, marginTop: 10, justifyContent: 'flex-end' }}>
+                        <button className="btn btn-secondary btn-sm" onClick={() => openModal('route', { ...route })} style={{ padding: '6px 12px' }}>
+                          <Edit size={13} /> Edit Route
+                        </button>
                       </div>
                     </div>
                   ))}
-                  {routes.length === 0 && <div className="empty-state"><div className="empty-icon"><MapPin size={22} /></div><p>No routes yet</p></div>}
+                  {routes.length === 0 && <div className="empty-state" style={{ gridColumn: 'span 3' }}><div className="empty-icon"><MapPin size={22} /></div><p>No routes yet</p></div>}
                 </div>
               </>
             )}
 
             {/* DRIVERS TAB */}
             {tab === 'Drivers' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div className="grid-desktop-3" style={{ gap: 12 }}>
                 {drivers.map(d => (
-                  <div key={d._id} className="card" style={{ padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{d.name}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{d.employeeId}</div>
+                  <div 
+                    key={d._id} 
+                    className="card premium-glass-card" 
+                    style={{ 
+                      padding: '16px', 
+                      display: 'flex', 
+                      flexDirection: 'column', 
+                      justifyContent: 'space-between', 
+                      minHeight: 120, 
+                      border: '1px solid var(--border)',
+                      position: 'relative'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', width: '100%' }}>
+                      <div>
+                        <div style={{ fontWeight: 800, fontSize: '0.96rem', color: 'var(--text-primary)' }}>{d.name}</div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: 4 }}>Emp ID: {d.employeeId}</div>
+                        {d.phone && d.phone !== 'N/A' && (
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>Phone: {d.phone}</div>
+                        )}
+                      </div>
+                      <span 
+                        className={`badge ${d.isApproved ? 'badge-green' : 'badge-amber'}`} 
+                        style={{ fontSize: '0.7rem', padding: '3px 8px', fontWeight: 800 }}
+                      >
+                        {d.isApproved ? 'Approved' : 'Pending'}
+                      </span>
                     </div>
-                    <span className="badge badge-blue">{d.role}</span>
+
+                    <div style={{ display: 'flex', borderTop: '1px dashed var(--border)', paddingTop: 10, marginTop: 12, justifyContent: 'flex-end', alignItems: 'center' }}>
+                      {!d.isApproved ? (
+                        <button 
+                          className="btn btn-primary btn-sm" 
+                          onClick={() => handleApproveDriver(d.employeeId)}
+                          style={{ 
+                            padding: '6px 12px', 
+                            fontSize: '0.78rem', 
+                            fontWeight: 700, 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: 6,
+                            background: 'var(--green)',
+                            borderColor: 'var(--green)'
+                          }}
+                        >
+                          <CheckCircle2 size={13} /> Approve Driver
+                        </button>
+                      ) : (
+                        <span style={{ fontSize: '0.74rem', color: 'var(--green)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <CheckCircle2 size={13} /> Verification Verified
+                        </span>
+                      )}
+                    </div>
                   </div>
                 ))}
-                {drivers.length === 0 && <div className="empty-state"><div className="empty-icon"><Users size={22} /></div><p>No drivers registered</p></div>}
+                {drivers.length === 0 && <div className="empty-state" style={{ gridColumn: 'span 3' }}><div className="empty-icon"><Users size={22} /></div><p>No drivers registered</p></div>}
               </div>
             )}
           </>

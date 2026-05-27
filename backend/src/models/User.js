@@ -34,6 +34,12 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  isApproved: {
+    type: Boolean,
+    default: function() {
+      return this.role !== 'driver';
+    }
+  },
   otpCode: {
     type: String,
     default: null,

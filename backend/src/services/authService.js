@@ -13,7 +13,8 @@ export const MOCK_USERS = [
     phone: '555-0111',
     password: 'password123',
     role: 'driver',
-    isVerified: true
+    isVerified: true,
+    isApproved: true
   },
   {
     _id: 'mock-passenger-222',
@@ -21,8 +22,9 @@ export const MOCK_USERS = [
     employeeId: 'passenger@trackbus.com', // Passenger quick-fill (fallback to driver for phase 2 compliance)
     phone: '555-0222',
     password: 'password123',
-    role: 'driver',
-    isVerified: true
+    role: 'passenger',
+    isVerified: true,
+    isApproved: true
   },
   {
     _id: 'mock-admin-333',
@@ -31,7 +33,8 @@ export const MOCK_USERS = [
     phone: '555-0333',
     password: 'password123',
     role: 'admin',
-    isVerified: true
+    isVerified: true,
+    isApproved: true
   }
 ];
 
@@ -42,6 +45,7 @@ export const registerUser = async (userData, isDbConnected) => {
   const { employeeId, role } = userData;
   const emailLower = employeeId.toLowerCase();
   const userRole = role || 'passenger';
+  const isPassenger = userRole === 'passenger';
 
   const bypassEmails = ['driver@trackbus.com', 'passenger@trackbus.com', 'admin@trackbus.com'];
   const isBypass = bypassEmails.includes(emailLower);
@@ -50,52 +54,58 @@ export const registerUser = async (userData, isDbConnected) => {
   const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
 
   if (isDbConnected) {
+    if (userRole === 'driver') {
+      const existingDriver = await User.findOne({ employeeId: emailLower, role: 'driver' });
+      if (existingDriver) {
+        throw new AppError('Driver email address is already registered', 400);
+      }
+    }
+
     let user = await User.findOne({ employeeId: emailLower });
     if (!user) {
       user = await User.create({
-        name: userRole === 'driver' ? 'Mock Driver' : 'Passenger',
+        name: isPassenger ? 'Passenger' : (userRole === 'driver' ? (userData.name || 'Driver') : 'Admin'),
         employeeId: emailLower,
-        phone: 'N/A',
-        password: null,
+        phone: userData.phone || 'N/A',
+        password: isPassenger ? null : userData.password,
         role: userRole,
-        isVerified: isBypass,
-        otpCode: isBypass ? null : otp,
-        otpExpires: isBypass ? null : otpExpires
+        isVerified: false,
+        isApproved: isPassenger || isBypass,
+        otpCode: otp,
+        otpExpires: otpExpires
       });
     } else {
-      user.role = userRole; // Update role to match current selection
-      if (!isBypass) {
-        user.otpCode = otp;
-        user.otpExpires = otpExpires;
+      user.role = userRole;
+      user.otpCode = otp;
+      user.otpExpires = otpExpires;
+      if (userRole === 'driver' && userData.password) {
+        user.password = userData.password;
       }
       await user.save();
     }
 
-    if (isBypass) {
+    if (isPassenger) {
       return {
-        _id: user._id,
-        name: user.name,
-        employeeId: user.employeeId,
-        phone: user.phone,
-        role: user.role,
-        isVerified: true,
-        token: generateToken({ id: user._id, role: user.role, name: user.name, employeeId: user.employeeId }),
+        success: true,
+        message: 'OTP verification initialized for passenger.',
+        requiresOtp: true
       };
     }
 
-    try {
-      await sendOTPEmail(emailLower, otp);
-    } catch (emailErr) {
-      console.warn('⚠️ SMTP OTP delivery failed during registration:', emailErr.message);
-    }
-
     return {
-      requiresOtp: true,
-      employeeId: emailLower,
-      message: 'OTP sent to email.'
+      success: true,
+      message: 'Driver registration successful! Account is pending admin approval.',
+      requiresOtp: true
     };
   } else {
     // Mock Registration Fallback
+    if (userRole === 'driver') {
+      const existingDriver = MOCK_USERS.find(u => u.employeeId.toLowerCase() === emailLower && u.role === 'driver');
+      if (existingDriver) {
+        throw new AppError('Driver email address is already registered (Mock)', 400);
+      }
+    }
+
     let mockUser = MOCK_USERS.find(
       u => u.employeeId.toLowerCase() === emailLower
     );
@@ -103,47 +113,39 @@ export const registerUser = async (userData, isDbConnected) => {
       const newMockId = `mock-user-${Date.now()}`;
       mockUser = {
         _id: newMockId,
-        name: userRole === 'driver' ? 'Mock Driver' : 'Passenger',
+        name: isPassenger ? 'Passenger' : (userRole === 'driver' ? (userData.name || 'Driver') : 'Admin'),
         employeeId: emailLower,
-        phone: 'N/A',
-        password: 'password123',
+        phone: userData.phone || 'N/A',
+        password: isPassenger ? null : (userData.password || 'password123'),
         role: userRole,
-        isVerified: isBypass,
-        otpCode: isBypass ? null : otp,
-        otpExpires: isBypass ? null : otpExpires
+        isVerified: false,
+        isApproved: isPassenger || isBypass,
+        otpCode: otp,
+        otpExpires: otpExpires
       };
       MOCK_USERS.push(mockUser);
     } else {
-      mockUser.role = userRole; // Update role to match current selection
-      if (!isBypass) {
-        mockUser.otpCode = otp;
-        mockUser.otpExpires = otpExpires;
+      mockUser.role = userRole;
+      mockUser.otpCode = otp;
+      mockUser.otpExpires = otpExpires;
+      if (userRole === 'driver' && userData.password) {
+        mockUser.password = userData.password;
       }
     }
 
-    if (isBypass) {
+    if (isPassenger) {
       return {
-        _id: mockUser._id,
-        name: mockUser.name,
-        employeeId: mockUser.employeeId,
-        phone: mockUser.phone,
-        role: mockUser.role,
-        isVerified: true,
-        token: generateToken({ id: mockUser._id, role: mockUser.role, name: mockUser.name, employeeId: mockUser.employeeId }),
+        success: true,
+        message: 'OTP verification initialized for passenger (Mock).',
+        requiresOtp: true,
         isMockMode: true,
       };
     }
 
-    try {
-      await sendOTPEmail(emailLower, otp);
-    } catch (emailErr) {
-      console.warn('⚠️ SMTP OTP delivery failed during mock registration:', emailErr.message);
-    }
-
     return {
+      success: true,
+      message: 'Driver registration successful (Mock)! Account is pending admin approval.',
       requiresOtp: true,
-      employeeId: emailLower,
-      message: 'OTP sent to email.',
       isMockMode: true,
     };
   }
@@ -161,6 +163,10 @@ export const verifyOtpUser = async (employeeId, otp, isDbConnected) => {
     const user = await User.findOne({ employeeId });
     if (!user) {
       throw new AppError('User not found with this Employee ID', 404);
+    }
+
+    if (user.role === 'driver' && !user.isApproved) {
+      throw new AppError('Your driver account is pending verification by admin.', 403);
     }
 
     if (otp !== '0000' && otp !== '000000' && user.otpCode !== otp) {
@@ -193,6 +199,10 @@ export const verifyOtpUser = async (employeeId, otp, isDbConnected) => {
 
     if (!mockUser) {
       throw new AppError('User not found in mock database', 404);
+    }
+
+    if (mockUser.role === 'driver' && !mockUser.isApproved) {
+      throw new AppError('Your driver account is pending verification by admin (Mock).', 403);
     }
 
     if (otp !== '0000' && otp !== '000000' && mockUser.otpCode !== otp) {
@@ -278,120 +288,67 @@ export const loginUser = async (employeeId, password, isDbConnected) => {
   const bypassEmails = ['driver@trackbus.com', 'passenger@trackbus.com', 'admin@trackbus.com'];
   const isBypass = bypassEmails.includes(emailLower);
 
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
-  const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
-
   if (isDbConnected) {
-    let user = await User.findOne({ employeeId: emailLower });
-    
-    // Auto register if new user
+    const user = await User.findOne({ employeeId: emailLower });
     if (!user) {
-      let userRole = 'passenger';
-      if (emailLower.includes('driver')) userRole = 'driver';
-      if (emailLower.includes('admin')) userRole = 'admin';
+      throw new AppError('Invalid credentials.', 401);
+    }
 
-      user = await User.create({
-        name: userRole === 'driver' ? 'Mock Driver' : 'Passenger',
-        employeeId: emailLower,
-        phone: 'N/A',
-        password: null,
-        role: userRole,
-        isVerified: isBypass,
-        otpCode: isBypass ? null : otp,
-        otpExpires: isBypass ? null : otpExpires
-      });
-    } else {
-      if (isBypass) {
-        let userRole = 'passenger';
-        if (emailLower === 'driver@trackbus.com') userRole = 'driver';
-        if (emailLower === 'admin@trackbus.com') userRole = 'admin';
-        user.role = userRole;
-        user.isVerified = true;
-        await user.save();
-      } else {
-        user.otpCode = otp;
-        user.otpExpires = otpExpires;
-        await user.save();
+    if (user.role === 'driver') {
+      if (!user.isApproved) {
+        throw new AppError('Your driver account is pending verification by admin.', 403);
+      }
+      const isMatch = await user.matchPassword(password);
+      if (!isMatch) {
+        throw new AppError('Invalid credentials.', 401);
+      }
+    } else if (user.role === 'admin') {
+      const isMatch = await user.matchPassword(password);
+      if (!isMatch) {
+        throw new AppError('Invalid credentials.', 401);
       }
     }
 
-    if (isBypass) {
-      return {
-        _id: user._id,
-        name: user.name,
-        employeeId: user.employeeId,
-        phone: user.phone,
-        role: user.role,
-        isVerified: true,
-        token: generateToken({ id: user._id, role: user.role, name: user.name, employeeId: user.employeeId }),
-      };
-    }
-
-    try {
-      await sendOTPEmail(emailLower, otp);
-    } catch (emailErr) {
-      console.warn('⚠️ SMTP OTP delivery failed during login:', emailErr.message);
-    }
-
     return {
-      requiresOtp: true,
-      employeeId: emailLower,
-      message: 'OTP sent successfully.'
+      _id: user._id,
+      name: user.name,
+      employeeId: user.employeeId,
+      phone: user.phone,
+      role: user.role,
+      isVerified: user.isVerified,
+      token: generateToken({ id: user._id, role: user.role, name: user.name, employeeId: user.employeeId }),
     };
   } else {
     // Mock Login Fallback
-    let mockUser = MOCK_USERS.find(
+    const mockUser = MOCK_USERS.find(
       u => u.employeeId.toLowerCase() === emailLower
     );
 
     if (!mockUser) {
-      let userRole = 'passenger';
-      if (emailLower.includes('driver')) userRole = 'driver';
-      if (emailLower.includes('admin')) userRole = 'admin';
+      throw new AppError('Invalid credentials.', 401);
+    }
 
-      const newMockId = `mock-user-${Date.now()}`;
-      mockUser = {
-        _id: newMockId,
-        name: userRole === 'driver' ? 'Mock Driver' : 'Passenger',
-        employeeId: emailLower,
-        phone: 'N/A',
-        password: 'password123',
-        role: userRole,
-        isVerified: isBypass,
-        otpCode: isBypass ? null : otp,
-        otpExpires: isBypass ? null : otpExpires
-      };
-      MOCK_USERS.push(mockUser);
-    } else {
-      if (!isBypass) {
-        mockUser.otpCode = otp;
-        mockUser.otpExpires = otpExpires;
+    if (mockUser.role === 'driver') {
+      if (!mockUser.isApproved) {
+        throw new AppError('Your driver account is pending verification by admin.', 403);
+      }
+      if (mockUser.password !== password) {
+        throw new AppError('Invalid credentials.', 401);
+      }
+    } else if (mockUser.role === 'admin') {
+      if (mockUser.password !== password) {
+        throw new AppError('Invalid credentials.', 401);
       }
     }
 
-    if (isBypass) {
-      return {
-        _id: mockUser._id,
-        name: mockUser.name,
-        employeeId: mockUser.employeeId,
-        phone: mockUser.phone,
-        role: mockUser.role,
-        isVerified: true,
-        token: generateToken({ id: mockUser._id, role: mockUser.role, name: mockUser.name, employeeId: mockUser.employeeId }),
-        isMockMode: true,
-      };
-    }
-
-    try {
-      await sendOTPEmail(emailLower, otp);
-    } catch (emailErr) {
-      console.warn('⚠️ SMTP OTP delivery failed during mock login:', emailErr.message);
-    }
-
     return {
-      requiresOtp: true,
-      employeeId: emailLower,
-      message: 'OTP sent successfully.',
+      _id: mockUser._id,
+      name: mockUser.name,
+      employeeId: mockUser.employeeId,
+      phone: mockUser.phone,
+      role: mockUser.role,
+      isVerified: true,
+      token: generateToken({ id: mockUser._id, role: mockUser.role, name: mockUser.name, employeeId: mockUser.employeeId }),
       isMockMode: true,
     };
   }
@@ -416,5 +373,34 @@ export const getUserProfile = async (userId, isDbConnected) => {
     // Return mock user sans password
     const { password, ...safeProfile } = mockUser;
     return safeProfile;
+  }
+};
+
+/**
+ * Approve a driver (Private admin utility)
+ */
+export const approveDriverUser = async (employeeId, isDbConnected) => {
+  if (!employeeId) {
+    throw new AppError('Employee ID/Email is required for driver approval', 400);
+  }
+  const emailLower = employeeId.toLowerCase();
+
+  if (isDbConnected) {
+    const user = await User.findOne({ employeeId: emailLower });
+    if (!user) {
+      throw new AppError('Driver not found', 404);
+    }
+    user.isApproved = true;
+    user.isVerified = true;
+    await user.save();
+    return { success: true, message: `Driver ${user.name} (${user.employeeId}) approved successfully.` };
+  } else {
+    const mockUser = MOCK_USERS.find(u => u.employeeId.toLowerCase() === emailLower);
+    if (!mockUser) {
+      throw new AppError('Driver not found in mock database', 404);
+    }
+    mockUser.isApproved = true;
+    mockUser.isVerified = true;
+    return { success: true, message: `Driver ${mockUser.name} (${mockUser.employeeId}) approved successfully (Mock).` };
   }
 };

@@ -618,6 +618,13 @@ export default function DriverDashboard() {
           <div className="topbar-logo-icon"><Bus size={15} /></div>
           <span className="topbar-logo-text">Driver Dashboard</span>
         </div>
+        
+        {/* Desktop Navigation Links */}
+        <div className="desktop-nav-links">
+          <button className="desktop-nav-link active" onClick={() => navigate('/driver')}>Live Session</button>
+          <button className="desktop-nav-link" onClick={logout}>Logout</button>
+        </div>
+
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span className={`badge ${phase === 'online' ? 'badge-green' : 'badge-red'}`}>
             {phase === 'online' ? <><Wifi size={10} />Broadcasting</> : 'Offline'}
@@ -638,7 +645,7 @@ export default function DriverDashboard() {
         {/* PHASE: TRIP CREATION UI */}
         {phase === 'creation' && (
           <div style={{ marginTop: 12 }}>
-            <form onSubmit={handleStartTrip} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <form onSubmit={handleStartTrip} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '20px 18px' }}>
               <h3 style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
                 <Radio size={18} style={{ color: 'var(--accent)' }} />
                 New Live Trip Session
@@ -649,6 +656,10 @@ export default function DriverDashboard() {
                   {errorMsg}
                 </div>
               )}
+
+              <div className="grid-desktop-2" style={{ gap: 20 }}>
+                {/* Left Column: Origin, Destination and Routes list */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
               {/* Source Node */}
               <div>
@@ -831,13 +842,24 @@ export default function DriverDashboard() {
                   )}
                 </div>
               )}
+            </div> {/* Close Left Column */}
 
+            {/* Right Column: Configure Stations Timeline */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {(() => {
-                const selectedRoute = routes.find(r => r._id === selectedRouteId);
-                if (!selectedRoute) return null;
-                
-                return (
-                  <div className="card" style={{ position: 'relative', marginTop: 14, border: '1.5px solid var(--accent)', background: 'var(--bg)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    const selectedRoute = routes.find(r => r._id === selectedRouteId);
+                    if (!selectedRoute) {
+                      return (
+                        <div className="card premium-glass-card" style={{ height: '100%', minHeight: 280, border: '1.5px dashed var(--border-strong)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', gap: 10, padding: 24, background: 'var(--bg-subtle)', borderRadius: 12 }}>
+                          <MapPin size={32} style={{ color: 'var(--text-muted)' }} />
+                          <span style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-secondary)' }}>Configure Stations Timeline</span>
+                          <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Select a route option on the left to customize sequence and timings.</span>
+                        </div>
+                      );
+                    }
+                    
+                    return (
+                      <div className="card" style={{ position: 'relative', border: '1.5px solid var(--accent)', background: 'var(--bg)', display: 'flex', flexDirection: 'column', gap: 10, padding: '16px 14px' }}>
                     {recalculatingPath && (
                       <div style={{
                         position: 'absolute',
@@ -1096,13 +1118,18 @@ export default function DriverDashboard() {
                   </div>
                 );
               })()}
+                </div> {/* Close Right Column */}
+              </div> {/* Close grid-desktop-2 */}
             </form>
           </div>
         )}
 
         {/* PHASE: ONLINE ACTIVE TRIP SCREEN */}
         {phase === 'online' && activeTrip && (
-          <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div className="grid-desktop-2" style={{ marginTop: 12, gap: 20 }}>
+            
+            {/* Left Column: Live Telemetry, speedometer, and simulators */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             
             {/* Status Live banner */}
             <div className="in-bus-banner" style={{ background: 'linear-gradient(135deg, var(--accent) 0%, #1d4ed8 100%)', boxShadow: '0 4px 15px rgba(29,78,216,0.3)' }}>
@@ -1200,7 +1227,10 @@ export default function DriverDashboard() {
                 </div>
               )}
             </div>
+          </div> {/* Close Left Column */}
 
+          {/* Right Column: Stations Timeline adherence and occupancy selector */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {/* Full Trip Stations Sequence Timeline */}
             {activeTrip.selectedRouteTemplateId?.stops && activeTrip.selectedRouteTemplateId.stops.length > 0 && (
               <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -1350,7 +1380,8 @@ export default function DriverDashboard() {
               )}
             </button>
           </div>
-        )}
+        </div>
+      )}
       </div>
 
       <div className="bottom-nav">
