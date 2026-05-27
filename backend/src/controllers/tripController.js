@@ -130,7 +130,11 @@ export const updateTripOccupancy = catchAsync(async (req, res, next) => {
 export const fetchActiveTrips = catchAsync(async (req, res, next) => {
   const list = await tripService.getActiveTrips(true);
 
-  res.status(200).json(list);
+  res.status(200).json({
+    success: true,
+    count: list.length,
+    data: list
+  });
 });
 
 /**

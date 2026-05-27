@@ -389,7 +389,7 @@ export const getAllRoutes = async (req, res) => {
  */
 export const searchCorridors = async (req, res) => {
   try {
-    const isDbConnected = req.app.get('isDbConnected');
+    const isDbConnected = true;
     const { from = '', to = '', q = '' } = req.query;
 
     let routeTemplates = [];
@@ -544,7 +544,7 @@ export const searchCorridors = async (req, res) => {
  */
 export const getUniqueCities = async (req, res) => {
   try {
-    const isDbConnected = req.app.get('isDbConnected');
+    const isDbConnected = true;
     let sortedCities = [];
 
     if (isDbConnected) {
@@ -593,7 +593,7 @@ export const submitOccupancyVote = async (req, res) => {
   try {
     const { tripId } = req.params;
     const { passengerId, vote } = req.body;
-    const isDbConnected = req.app.get('isDbConnected');
+    const isDbConnected = true;
 
     if (!passengerId || !vote) {
       return res.status(400).json({
@@ -638,7 +638,7 @@ export const submitPassengerCheckIn = async (req, res) => {
   try {
     const { tripId } = req.params;
     const { passengerId } = req.body;
-    const isDbConnected = req.app.get('isDbConnected');
+    const isDbConnected = true;
 
     if (!passengerId) {
       return res.status(400).json({
@@ -677,7 +677,7 @@ export const submitPassengerCheckOut = async (req, res) => {
   try {
     const { tripId } = req.params;
     const { passengerId } = req.body;
-    const isDbConnected = req.app.get('isDbConnected');
+    const isDbConnected = true;
 
     if (!passengerId) {
       return res.status(400).json({
