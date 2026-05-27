@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
-import { MOCK_USERS } from '../services/authService.js';
+import { ADMIN_LOGIN_EMAIL, MOCK_USERS } from '../services/authService.js';
 import { AppError } from '../utils/errors.js';
 
 /**
@@ -31,7 +31,7 @@ export const protect = async (req, res, next) => {
           const emailLower = (req.user.employeeId || '').toLowerCase();
           if (emailLower === 'driver@trackbus.com') {
             req.user.role = 'driver';
-          } else if (emailLower === 'admin@trackbus.com') {
+          } else if (emailLower === ADMIN_LOGIN_EMAIL) {
             req.user.role = 'admin';
           }
         }

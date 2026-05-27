@@ -349,8 +349,8 @@ export default function DriverDashboard() {
   // Start GPS geolocation watch & 5-second interval reporter
   const startGPSStreaming = (trip, forcedSimMode = null) => {
     const useSim = forcedSimMode !== null ? forcedSimMode : isSimulating;
-
-    const pathCoords = trip.selectedRouteTemplateId?.pathCoordinates || [];
+    const routeTemplate = trip.routeSnapshot || trip.selectedRouteTemplateId;
+    const pathCoords = routeTemplate?.pathCoordinates || [];
     const originLat = pathCoords[0]?.[0] || 18.5204;
     const originLng = pathCoords[0]?.[1] || 73.8567;
     const originPos = { lat: originLat, lng: originLng };
@@ -609,6 +609,8 @@ export default function DriverDashboard() {
     const secs = s % 60;
     return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
+
+  const activeRouteTemplate = activeTrip?.routeSnapshot || activeTrip?.selectedRouteTemplateId;
 
   return (
     <div className="page">
@@ -1145,10 +1147,10 @@ export default function DriverDashboard() {
                 <ArrowRight size={16} />
                 <span style={{ fontSize: '1.2rem', fontWeight: 800 }}>{destination}</span>
               </div>
-              {activeTrip.selectedRouteTemplateId && (
+              {activeRouteTemplate && (
                 <div style={{ fontSize: '0.78rem', opacity: 0.9, marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
                   <Navigation size={12} />
-                  Guidance Template: {activeTrip.selectedRouteTemplateId.routeName || `${source} → ${destination}`}
+                  Guidance Template: {activeRouteTemplate.routeName || `${source} → ${destination}`}
                 </div>
               )}
             </div>
@@ -1232,7 +1234,7 @@ export default function DriverDashboard() {
           {/* Right Column: Stations Timeline adherence and occupancy selector */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {/* Full Trip Stations Sequence Timeline */}
-            {activeTrip.selectedRouteTemplateId?.stops && activeTrip.selectedRouteTemplateId.stops.length > 0 && (
+            {activeRouteTemplate?.stops && activeRouteTemplate.stops.length > 0 && (
               <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <div style={{
                   fontSize: '0.75rem',
@@ -1248,7 +1250,7 @@ export default function DriverDashboard() {
                   marginBottom: 4
                 }}>
                   <MapPin size={14} style={{ color: 'var(--accent)' }} />
-                  Full Transit Timeline ({activeTrip.selectedRouteTemplateId.stops.length} Stations)
+                  Full Transit Timeline ({activeRouteTemplate.stops.length} Stations)
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', position: 'relative', paddingLeft: 18, margin: '6px 0' }}>
@@ -1263,7 +1265,7 @@ export default function DriverDashboard() {
                     zIndex: 0
                   }} />
 
-                  {[...activeTrip.selectedRouteTemplateId.stops]
+                  {[...activeRouteTemplate.stops]
                     .sort((a, b) => a.sequence - b.sequence)
                     .map((stop, index, arr) => {
                       const isStart = index === 0;

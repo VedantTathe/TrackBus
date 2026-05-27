@@ -2,41 +2,59 @@ import bcrypt from 'bcryptjs';
 import User from '../models/User.js';
 import { generateToken } from '../utils/generateToken.js';
 import { AppError } from '../utils/errors.js';
-import { sendOTPEmail } from './emailService.js';
+import { sendDriverApprovedEmail, sendOTPEmail } from './emailService.js';
 
-// Seeded local mock users for offline fallback mode
-export const MOCK_USERS = [
-  {
-    _id: 'mock-driver-111',
-    name: 'Captain Alex',
-    employeeId: 'driver@trackbus.com', // Maps to client-side quick-fill credentials
-    phone: '555-0111',
-    password: 'password123',
-    role: 'driver',
-    isVerified: true,
-    isApproved: true
-  },
-  {
-    _id: 'mock-passenger-222',
-    name: 'Sarah Connor',
-    employeeId: 'passenger@trackbus.com', // Passenger quick-fill (fallback to driver for phase 2 compliance)
-    phone: '555-0222',
-    password: 'password123',
-    role: 'passenger',
-    isVerified: true,
-    isApproved: true
-  },
-  {
-    _id: 'mock-admin-333',
-    name: 'Alice Admin',
-    employeeId: 'admin@trackbus.com',
-    phone: '555-0333',
-    password: 'password123',
-    role: 'admin',
-    isVerified: true,
-    isApproved: true
+export const ADMIN_LOGIN_EMAIL = 'vedanttathe30@gmail.com';
+export const ADMIN_BOOTSTRAP_PASSWORD = 'TrackBus@2026';
+const ADMIN_OTP_EMAIL = 'vedanttathe30@gmail.com';
+const OTP_TTL_MINUTES = 10;
+
+const logOtpFlow = ({ flow, target, otp, mode = 'db' }) => {
+  const otpDisplay = process.env.NODE_ENV === 'production' ? '******' : otp;
+  console.log(`🔐 OTP Flow [${flow}] [${mode}] -> ${target} | otp=${otpDisplay}`);
+};
+
+// In-memory fallback users (empty by default; no demo/bypass users)
+export const MOCK_USERS = [];
+
+export const ensureAdminUser = async (isDbConnected) => {
+  if (!isDbConnected) return;
+
+  const existingAdmin = await User.findOne({ employeeId: ADMIN_LOGIN_EMAIL });
+  if (!existingAdmin) {
+    await User.create({
+      name: 'Vedant Admin',
+      employeeId: ADMIN_LOGIN_EMAIL,
+      phone: 'N/A',
+      password: ADMIN_BOOTSTRAP_PASSWORD,
+      role: 'admin',
+      isVerified: true,
+      isApproved: true,
+      otpCode: null,
+      otpExpires: null,
+    });
+    return;
   }
-];
+
+  let changed = false;
+  if (existingAdmin.role !== 'admin') {
+    existingAdmin.role = 'admin';
+    changed = true;
+  }
+  if (!existingAdmin.password) {
+    existingAdmin.password = ADMIN_BOOTSTRAP_PASSWORD;
+    changed = true;
+  }
+  if (!existingAdmin.isApproved) {
+    existingAdmin.isApproved = true;
+    changed = true;
+  }
+  if (!existingAdmin.isVerified) {
+    existingAdmin.isVerified = true;
+    changed = true;
+  }
+  if (changed) await existingAdmin.save();
+};
 
 /**
  * Register a user
@@ -47,11 +65,8 @@ export const registerUser = async (userData, isDbConnected) => {
   const userRole = role || 'passenger';
   const isPassenger = userRole === 'passenger';
 
-  const bypassEmails = ['driver@trackbus.com', 'passenger@trackbus.com', 'admin@trackbus.com'];
-  const isBypass = bypassEmails.includes(emailLower);
-
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
-  const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
+  const otpExpires = new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000);
 
   if (isDbConnected) {
     if (userRole === 'driver') {
@@ -70,7 +85,7 @@ export const registerUser = async (userData, isDbConnected) => {
         password: isPassenger ? null : userData.password,
         role: userRole,
         isVerified: false,
-        isApproved: isPassenger || isBypass,
+        isApproved: isPassenger,
         otpCode: otp,
         otpExpires: otpExpires
       });
@@ -82,6 +97,13 @@ export const registerUser = async (userData, isDbConnected) => {
         user.password = userData.password;
       }
       await user.save();
+    }
+
+    // Send OTP email for verification flows (passenger + driver).
+    // Note: Admin OTP is handled during admin login 2FA.
+    if (userRole === 'passenger' || userRole === 'driver') {
+      logOtpFlow({ flow: `register-${userRole}`, target: emailLower, otp, mode: 'db' });
+      await sendOTPEmail(emailLower, otp);
     }
 
     if (isPassenger) {
@@ -116,10 +138,10 @@ export const registerUser = async (userData, isDbConnected) => {
         name: isPassenger ? 'Passenger' : (userRole === 'driver' ? (userData.name || 'Driver') : 'Admin'),
         employeeId: emailLower,
         phone: userData.phone || 'N/A',
-        password: isPassenger ? null : (userData.password || 'password123'),
+        password: isPassenger ? null : userData.password,
         role: userRole,
         isVerified: false,
-        isApproved: isPassenger || isBypass,
+        isApproved: isPassenger,
         otpCode: otp,
         otpExpires: otpExpires
       };
@@ -131,6 +153,11 @@ export const registerUser = async (userData, isDbConnected) => {
       if (userRole === 'driver' && userData.password) {
         mockUser.password = userData.password;
       }
+    }
+
+    if (userRole === 'passenger' || userRole === 'driver') {
+      logOtpFlow({ flow: `register-${userRole}`, target: emailLower, otp, mode: 'mock' });
+      await sendOTPEmail(emailLower, otp);
     }
 
     if (isPassenger) {
@@ -237,12 +264,13 @@ export const resendOtpUser = async (employeeId, isDbConnected) => {
   if (!employeeId) {
     throw new AppError('Employee ID is required', 400);
   }
+  const emailLower = employeeId.toLowerCase();
 
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
-  const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
+  const otpExpires = new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000);
 
   if (isDbConnected) {
-    const user = await User.findOne({ employeeId });
+    const user = await User.findOne({ employeeId: emailLower });
     if (!user) {
       throw new AppError('User not found with this Employee ID', 404);
     }
@@ -251,7 +279,9 @@ export const resendOtpUser = async (employeeId, isDbConnected) => {
     user.otpExpires = otpExpires;
     await user.save();
 
-    await sendOTPEmail(user.employeeId, otp);
+    const otpRecipient = user.role === 'admin' ? ADMIN_OTP_EMAIL : user.employeeId;
+    logOtpFlow({ flow: `resend-${user.role || 'user'}`, target: otpRecipient, otp, mode: 'db' });
+    await sendOTPEmail(otpRecipient, otp);
 
     return {
       success: true,
@@ -260,7 +290,7 @@ export const resendOtpUser = async (employeeId, isDbConnected) => {
   } else {
     // Mock resend OTP fallback
     const mockUser = MOCK_USERS.find(
-      u => u.employeeId.toLowerCase() === employeeId.toLowerCase()
+      u => u.employeeId.toLowerCase() === emailLower
     );
 
     if (!mockUser) {
@@ -270,7 +300,9 @@ export const resendOtpUser = async (employeeId, isDbConnected) => {
     mockUser.otpCode = otp;
     mockUser.otpExpires = otpExpires;
 
-    await sendOTPEmail(mockUser.employeeId, otp);
+    const otpRecipient = mockUser.role === 'admin' ? ADMIN_OTP_EMAIL : mockUser.employeeId;
+    logOtpFlow({ flow: `resend-${mockUser.role || 'user'}`, target: otpRecipient, otp, mode: 'mock' });
+    await sendOTPEmail(otpRecipient, otp);
 
     return {
       success: true,
@@ -285,8 +317,6 @@ export const resendOtpUser = async (employeeId, isDbConnected) => {
  */
 export const loginUser = async (employeeId, password, isDbConnected) => {
   const emailLower = employeeId.toLowerCase();
-  const bypassEmails = ['driver@trackbus.com', 'passenger@trackbus.com', 'admin@trackbus.com'];
-  const isBypass = bypassEmails.includes(emailLower);
 
   if (isDbConnected) {
     const user = await User.findOne({ employeeId: emailLower });
@@ -302,11 +332,37 @@ export const loginUser = async (employeeId, password, isDbConnected) => {
       if (!isMatch) {
         throw new AppError('Invalid credentials.', 401);
       }
+      // Drivers get token directly
+      return {
+        _id: user._id,
+        name: user.name,
+        employeeId: user.employeeId,
+        phone: user.phone,
+        role: user.role,
+        isVerified: user.isVerified,
+        token: generateToken({ id: user._id, role: user.role, name: user.name, employeeId: user.employeeId }),
+      };
     } else if (user.role === 'admin') {
+      if (user.employeeId !== ADMIN_LOGIN_EMAIL) {
+        throw new AppError('Admin access is restricted.', 403);
+      }
       const isMatch = await user.matchPassword(password);
       if (!isMatch) {
         throw new AppError('Invalid credentials.', 401);
       }
+      // Admin requires OTP 2FA — generate and email OTP
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      const otpExpires = new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000);
+      user.otpCode = otp;
+      user.otpExpires = otpExpires;
+      await user.save();
+      logOtpFlow({ flow: 'login-admin-2fa', target: ADMIN_OTP_EMAIL, otp, mode: 'db' });
+      await sendOTPEmail(ADMIN_OTP_EMAIL, otp);
+      return {
+        requiresOtp: true,
+        employeeId: user.employeeId,
+        message: `OTP sent to admin email for 2FA verification.`,
+      };
     }
 
     return {
@@ -335,10 +391,36 @@ export const loginUser = async (employeeId, password, isDbConnected) => {
       if (mockUser.password !== password) {
         throw new AppError('Invalid credentials.', 401);
       }
+      return {
+        _id: mockUser._id,
+        name: mockUser.name,
+        employeeId: mockUser.employeeId,
+        phone: mockUser.phone,
+        role: mockUser.role,
+        isVerified: true,
+        token: generateToken({ id: mockUser._id, role: mockUser.role, name: mockUser.name, employeeId: mockUser.employeeId }),
+        isMockMode: true,
+      };
     } else if (mockUser.role === 'admin') {
+      if (mockUser.employeeId !== ADMIN_LOGIN_EMAIL) {
+        throw new AppError('Admin access is restricted.', 403);
+      }
       if (mockUser.password !== password) {
         throw new AppError('Invalid credentials.', 401);
       }
+      // Admin requires OTP 2FA — generate and send OTP (mock)
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      const otpExpires = new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000);
+      mockUser.otpCode = otp;
+      mockUser.otpExpires = otpExpires;
+      logOtpFlow({ flow: 'login-admin-2fa', target: ADMIN_OTP_EMAIL, otp, mode: 'mock' });
+      await sendOTPEmail(ADMIN_OTP_EMAIL, otp);
+      return {
+        requiresOtp: true,
+        employeeId: mockUser.employeeId,
+        message: `OTP sent to admin email for 2FA verification (Mock).`,
+        isMockMode: true,
+      };
     }
 
     return {
@@ -390,17 +472,25 @@ export const approveDriverUser = async (employeeId, isDbConnected) => {
     if (!user) {
       throw new AppError('Driver not found', 404);
     }
+    if (user.role !== 'driver') {
+      throw new AppError('Only driver accounts can be approved', 400);
+    }
     user.isApproved = true;
     user.isVerified = true;
     await user.save();
+    await sendDriverApprovedEmail(user.employeeId, user.name || 'Driver');
     return { success: true, message: `Driver ${user.name} (${user.employeeId}) approved successfully.` };
   } else {
     const mockUser = MOCK_USERS.find(u => u.employeeId.toLowerCase() === emailLower);
     if (!mockUser) {
       throw new AppError('Driver not found in mock database', 404);
     }
+    if (mockUser.role !== 'driver') {
+      throw new AppError('Only driver accounts can be approved', 400);
+    }
     mockUser.isApproved = true;
     mockUser.isVerified = true;
+    await sendDriverApprovedEmail(mockUser.employeeId, mockUser.name || 'Driver');
     return { success: true, message: `Driver ${mockUser.name} (${mockUser.employeeId}) approved successfully (Mock).` };
   }
 };

@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
-import { Bus, Users, Plus, Edit, Trash2, LogOut, RefreshCw, CheckCircle2, X, ChevronRight, MapPin } from 'lucide-react';
+import { Bus, Users, Plus, Edit, Trash2, LogOut, RefreshCw, CheckCircle2, X, ChevronRight, MapPin, Eye, EyeOff, Key } from 'lucide-react';
 
-const TABS = ['Buses', 'Routes', 'Drivers'];
+const TABS = ['Drivers', 'Routes', 'Buses'];
 
 export default function AdminDashboard() {
   const { user, logout } = useAuth();
-  const [tab, setTab] = useState('Buses');
+  const [tab, setTab] = useState('Drivers');
   const [buses, setBuses] = useState([]);
   const [routes, setRoutes] = useState([]);
   const [drivers, setDrivers] = useState([]);
@@ -18,17 +18,100 @@ export default function AdminDashboard() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
+  const [adminStep, setAdminStep] = useState('login'); // 'login' | 'otp' | 'dashboard'
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [adminOtpVal, setAdminOtpVal] = useState('');
+  const [adminOtpTarget, setAdminOtpTarget] = useState('');
+  const [adminToken, setAdminToken] = useState(null);
+  const [adminUser, setAdminUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [showAdminPass, setShowAdminPass] = useState(false);
+
+  const handleAdminLogin = async (e) => {
+    e.preventDefault();
+    if (!adminEmail.trim() || !adminPassword.trim()) return;
+    setAuthLoading(true);
+    setAuthError('');
+    try {
+      const res = await axios.post('/api/auth/login', {
+        employeeId: adminEmail.trim().toLowerCase(),
+        password: adminPassword,
+      });
+      if (res.data.requiresOtp) {
+        setAdminOtpTarget(res.data.employeeId);
+        setAdminStep('otp');
+      } else {
+        // Should not happen for admin, but handle gracefully
+        setAuthError('Unexpected response. Admin requires OTP verification.');
+      }
+    } catch (err) {
+      setAuthError(err.response?.data?.message || 'Login failed. Check your credentials.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleAdminOtp = async (e) => {
+    e.preventDefault();
+    if (!adminOtpVal.trim()) return;
+    setAuthLoading(true);
+    setAuthError('');
+    try {
+      const res = await axios.post('/api/auth/verify-otp', {
+        employeeId: adminOtpTarget,
+        otp: adminOtpVal.trim(),
+      });
+      if (res.data.token && res.data.role === 'admin') {
+        setAdminToken(res.data.token);
+        setAdminUser(res.data);
+        axios.defaults.headers.common['Authorization'] = `Bearer ${res.data.token}`;
+        setAdminStep('dashboard');
+        loadAll(); // fetch buses, routes, drivers now that auth is set
+      } else {
+        setAuthError('Access denied. Not an admin account.');
+      }
+    } catch (err) {
+      setAuthError(err.response?.data?.message || 'Invalid OTP. Please try again.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
   const loadAll = async () => {
     setLoading(true);
+    setError('');
     try {
-      const [busRes, routeRes, driverRes] = await Promise.all([
-        axios.get('/api/buses'),
+      const [driverRes, routeRes, busRes] = await Promise.allSettled([
+        axios.get('/api/buses/active-drivers'),
         axios.get('/api/buses/routes'),
-        axios.get('/api/buses/drivers')
+        axios.get('/api/buses'),
       ]);
-      setBuses(busRes.data);
-      setRoutes(routeRes.data);
-      setDrivers(driverRes.data);
+
+      if (driverRes.status === 'fulfilled') {
+        setDrivers(driverRes.value.data || []);
+      } else {
+        setDrivers([]);
+      }
+
+      if (routeRes.status === 'fulfilled') {
+        setRoutes(routeRes.value.data || []);
+      } else {
+        setRoutes([]);
+      }
+
+      if (busRes.status === 'fulfilled') {
+        setBuses(busRes.value.data || []);
+      } else {
+        setBuses([]);
+      }
+
+      if ([driverRes, routeRes, busRes].every(r => r.status === 'rejected')) {
+        setError('Failed to load admin data');
+      } else if ([driverRes, routeRes, busRes].some(r => r.status === 'rejected')) {
+        setError('Some data could not be loaded. Showing available records.');
+      }
     } catch (e) {
       setError('Failed to load data');
     } finally {
@@ -36,7 +119,9 @@ export default function AdminDashboard() {
     }
   };
 
-  useEffect(() => { loadAll(); }, []);
+  useEffect(() => {
+    if (adminStep === 'dashboard' && adminToken) loadAll();
+  }, [adminStep, adminToken]);
 
   const openModal = (type, data = {}) => { setModal({ type, data }); setForm(data); setError(''); };
   const closeModal = () => { setModal(null); setForm({}); setError(''); };
@@ -125,6 +210,156 @@ export default function AdminDashboard() {
 
   const CROWD_LABELS = { 1: 'Empty', 2: 'Seats Avail.', 3: 'Standing', 4: 'Full' };
 
+  // --- STEP: LOGIN ---
+  if (adminStep === 'login') {
+    return (
+      <div style={{
+        minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'var(--bg-primary)', padding: '24px'
+      }}>
+        <div style={{ width: '100%', maxWidth: 400 }}>
+          {/* Logo */}
+          <div style={{ textAlign: 'center', marginBottom: 32 }}>
+            <div style={{
+              width: 52, height: 52, borderRadius: 14, background: 'var(--accent)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px'
+            }}>
+              <Bus size={24} color="#fff" />
+            </div>
+            <h2 style={{ margin: 0, fontWeight: 900, fontSize: '1.4rem', color: 'var(--text-primary)' }}>Admin Portal</h2>
+            <p style={{ margin: '6px 0 0', fontSize: '0.83rem', color: 'var(--text-muted)', fontWeight: 500 }}>
+              TrackBus Fleet Management
+            </p>
+          </div>
+
+          <form onSubmit={handleAdminLogin} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {authError && (
+              <div className="alert alert-error" style={{ fontSize: '0.82rem' }}>{authError}</div>
+            )}
+
+            <div className="input-group">
+              <label className="input-label">Admin Email</label>
+              <input
+                className="input"
+                type="email"
+                placeholder="vedanttathe30@gmail.com"
+                value={adminEmail}
+                onChange={e => setAdminEmail(e.target.value)}
+                autoComplete="username"
+                required
+              />
+            </div>
+
+            <div className="input-group">
+              <label className="input-label">Password</label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  className="input"
+                  type={showAdminPass ? 'text' : 'password'}
+                  placeholder="Enter password"
+                  value={adminPassword}
+                  onChange={e => setAdminPassword(e.target.value)}
+                  autoComplete="current-password"
+                  required
+                  style={{ paddingRight: 42 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowAdminPass(v => !v)}
+                  style={{
+                    position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
+                    background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 0
+                  }}
+                >
+                  {showAdminPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              className="btn btn-primary btn-full"
+              type="submit"
+              disabled={authLoading}
+              style={{ padding: '13px', marginTop: 4, fontWeight: 700, fontSize: '0.92rem' }}
+            >
+              {authLoading ? <RefreshCw size={15} className="animate-spin" /> : 'Login & Send OTP'}
+            </button>
+          </form>
+
+          <p style={{ textAlign: 'center', marginTop: 20, fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+            OTP will be sent to the registered admin email
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // --- STEP: OTP ---
+  if (adminStep === 'otp') {
+    return (
+      <div style={{
+        minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'var(--bg-primary)', padding: '24px'
+      }}>
+        <div style={{ width: '100%', maxWidth: 380 }}>
+          {/* Logo */}
+          <div style={{ textAlign: 'center', marginBottom: 32 }}>
+            <div style={{
+              width: 52, height: 52, borderRadius: 14, background: 'var(--green)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px'
+            }}>
+              <Key size={24} color="#fff" />
+            </div>
+            <h2 style={{ margin: 0, fontWeight: 900, fontSize: '1.4rem', color: 'var(--text-primary)' }}>Verify OTP</h2>
+            <p style={{ margin: '6px 0 0', fontSize: '0.83rem', color: 'var(--text-muted)', fontWeight: 500 }}>
+              Code sent to <strong>vedanttathe30@gmail.com</strong>
+            </p>
+          </div>
+
+          <form onSubmit={handleAdminOtp} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {authError && (
+              <div className="alert alert-error" style={{ fontSize: '0.82rem' }}>{authError}</div>
+            )}
+
+            <div className="input-group">
+              <label className="input-label">6-Digit OTP Code</label>
+              <input
+                className="input"
+                type="text"
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="______"
+                value={adminOtpVal}
+                onChange={e => setAdminOtpVal(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                style={{ letterSpacing: '0.3em', fontSize: '1.4rem', textAlign: 'center', fontWeight: 800 }}
+                autoFocus
+                required
+              />
+            </div>
+
+            <button
+              className="btn btn-primary btn-full"
+              type="submit"
+              disabled={authLoading || adminOtpVal.length < 4}
+              style={{ padding: '13px', fontWeight: 700, fontSize: '0.92rem' }}
+            >
+              {authLoading ? <RefreshCw size={15} className="animate-spin" /> : 'Verify & Enter Dashboard'}
+            </button>
+
+            <button
+              type="button"
+              className="btn btn-ghost btn-full"
+              onClick={() => { setAdminStep('login'); setAuthError(''); setAdminOtpVal(''); }}
+              style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}
+            >
+              ← Back to Login
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="page">
       <div className="topbar">
@@ -134,7 +369,13 @@ export default function AdminDashboard() {
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button className="btn btn-ghost" onClick={loadAll} style={{ padding: 8 }}><RefreshCw size={15} /></button>
-          <button className="btn btn-ghost" onClick={logout} style={{ padding: 8 }}><LogOut size={15} /></button>
+          <button
+            className="btn btn-ghost"
+            onClick={() => { setAdminStep('login'); setAdminToken(null); setAdminUser(null); setAdminEmail(''); setAdminPassword(''); delete axios.defaults.headers.common['Authorization']; }}
+            style={{ padding: 8 }}
+          >
+            <LogOut size={15} />
+          </button>
         </div>
       </div>
 
@@ -145,7 +386,7 @@ export default function AdminDashboard() {
         <div style={{ padding: '14px 0 8px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <h2>Fleet Manager Command Center</h2>
-            <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 600 }}>ID: {user?.employeeId}</span>
+            <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 600 }}>ID: {adminUser?.employeeId}</span>
           </div>
           
           {/* Responsive Fleet Command Metrics Cards */}
@@ -404,7 +645,12 @@ export default function AdminDashboard() {
             <span className="nav-item-label">{t}</span>
           </button>
         ))}
-        <button className="nav-item" onClick={logout}><LogOut size={20} /><span className="nav-item-label">Logout</span></button>
+        <button
+          className="nav-item"
+          onClick={() => { setAdminStep('login'); setAdminToken(null); setAdminUser(null); setAdminEmail(''); setAdminPassword(''); delete axios.defaults.headers.common['Authorization']; }}
+        >
+          <LogOut size={20} /><span className="nav-item-label">Logout</span>
+        </button>
       </div>
     </div>
   );

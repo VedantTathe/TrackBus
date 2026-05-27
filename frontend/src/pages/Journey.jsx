@@ -56,6 +56,7 @@ export default function Journey() {
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(null);
   const [expandedGaps, setExpandedGaps] = useState({});
+  const routeTemplate = trip?.routeSnapshot || trip?.selectedRouteTemplateId;
 
   // Fetch active LiveTrip or fallback to legacy Bus session
   const loadTripData = async () => {
@@ -87,6 +88,7 @@ export default function Journey() {
           heading: foundBus.heading,
           occupancyLevel: foundBus.currentCrowd || 1,
           selectedRouteTemplateId: foundBus.route,
+          routeSnapshot: foundBus.route,
           isActive: foundBus.status === 'active'
         };
         setTrip(adapted);
@@ -142,7 +144,6 @@ export default function Journey() {
 
   // Compute Stop waypoints timeline sequence
   const schedule = useMemo(() => {
-    const routeTemplate = trip?.selectedRouteTemplateId;
     if (!routeTemplate?.stops?.length) return null;
 
     let stops = [...routeTemplate.stops].sort((a, b) => a.sequence - b.sequence);

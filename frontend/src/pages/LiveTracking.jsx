@@ -89,6 +89,7 @@ export default function LiveTracking() {
   const [passengerVote, setPassengerVote] = useState(null);
   const [passengerId, setPassengerId] = useState('');
   const [hasVoted, setHasVoted] = useState(false);
+  const routeTemplate = trip?.routeSnapshot || trip?.selectedRouteTemplateId;
 
   // Contribution counter & Modal feedback states
   const [contributionCount, setContributionCount] = useState(0);
@@ -150,13 +151,13 @@ export default function LiveTracking() {
 
           // Calculate proximity distance to the route stops & path
           let minDistToRoute = Number.POSITIVE_INFINITY;
-          const stops = trip?.selectedRouteTemplateId?.stops || [];
+          const stops = routeTemplate?.stops || [];
           stops.forEach(stop => {
             const d = distanceKm({ lat: latitude, lng: longitude }, { lat: stop.lat, lng: stop.lng });
             if (d < minDistToRoute) minDistToRoute = d;
           });
 
-          const path = trip?.selectedRouteTemplateId?.pathCoordinates || [];
+          const path = routeTemplate?.pathCoordinates || [];
           path.forEach(pt => {
             const dVal = distanceKm({ lat: latitude, lng: longitude }, { lat: pt[0], lng: pt[1] });
             if (dVal < minDistToRoute) minDistToRoute = dVal;
@@ -284,13 +285,13 @@ export default function LiveTracking() {
 
         // Calculate proximity distance to the route stops & path
         let minDistToRoute = Number.POSITIVE_INFINITY;
-        const stops = trip?.selectedRouteTemplateId?.stops || [];
+        const stops = routeTemplate?.stops || [];
         stops.forEach(stop => {
           const d = distanceKm({ lat: latitude, lng: longitude }, { lat: stop.lat, lng: stop.lng });
           if (d < minDistToRoute) minDistToRoute = d;
         });
 
-        const path = trip?.selectedRouteTemplateId?.pathCoordinates || [];
+        const path = routeTemplate?.pathCoordinates || [];
         path.forEach(pt => {
           const d = distanceKm({ lat: latitude, lng: longitude }, { lat: pt[0], lng: pt[1] });
           if (d < minDistToRoute) minDistToRoute = d;
@@ -455,7 +456,6 @@ export default function LiveTracking() {
 
   // Compute Stop waypoints timeline sequence
   const schedule = useMemo(() => {
-    const routeTemplate = trip?.selectedRouteTemplateId;
     if (!routeTemplate?.stops?.length) return null;
     
     let stops = [...routeTemplate.stops].sort((a, b) => a.sequence - b.sequence);
@@ -654,7 +654,7 @@ export default function LiveTracking() {
       if (!tripObj) return;
       const bus = tripObj.physicalBusId;
       const busNumber = bus?.busNumber || tripObj.tripId;
-      const routeName = tripObj.selectedRouteTemplateId?.routeName || `${tripObj.source} – ${tripObj.destination}`;
+      const routeName = (tripObj.routeSnapshot?.routeName || tripObj.selectedRouteTemplateId?.routeName) || `${tripObj.source} – ${tripObj.destination}`;
       
       const clean = {
         _id: bus?._id || tripObj._id || tripObj.tripId,
@@ -713,6 +713,7 @@ export default function LiveTracking() {
             heading: foundBus.heading,
             occupancyLevel: foundBus.currentCrowd || 1,
             selectedRouteTemplateId: foundBus.route,
+            routeSnapshot: foundBus.route,
             isActive: foundBus.status === 'active'
           };
           setTrip(adapted);
@@ -742,8 +743,8 @@ export default function LiveTracking() {
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
     // 2. Draw expected route template polyline (guidance only - off blue, dashed)
-    let expectedCoords = (trip.selectedRouteTemplateId?.pathCoordinates && trip.selectedRouteTemplateId.pathCoordinates.length > 0)
-      ? trip.selectedRouteTemplateId.pathCoordinates.filter(pt => pt && pt[0] !== 0 && pt[1] !== 0)
+    let expectedCoords = (routeTemplate?.pathCoordinates && routeTemplate.pathCoordinates.length > 0)
+      ? routeTemplate.pathCoordinates.filter(pt => pt && pt[0] !== 0 && pt[1] !== 0)
       : stopsCoords;
 
     // Truncate initial path coordinates at the passenger's searched destination stop
@@ -787,7 +788,7 @@ export default function LiveTracking() {
       .map(p => [p.lat, p.lng]);
       
     // Trail fallback must start from first station, e.g. Sangli/Pune, never 0,0
-    const startStop = trip.selectedRouteTemplateId?.stops?.[0];
+    const startStop = routeTemplate?.stops?.[0];
     const fallbackCoord = (startStop && startStop.lat !== 0 && startStop.lng !== 0)
       ? [startStop.lat, startStop.lng]
       : [latVal, lngVal];

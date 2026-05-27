@@ -41,7 +41,7 @@ export default function App() {
             <Route path="/journey/:busNumber" element={<ProtectedRoute allowedRoles={['passenger','driver','admin']}><Journey /></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute allowedRoles={['passenger','driver','admin']}><Profile /></ProtectedRoute>} />
             <Route path="/driver" element={<ProtectedRoute allowedRoles={['driver','admin']}><DriverDashboard /></ProtectedRoute>} />
-            <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>} />
+            <Route path="/admin" element={<AdminDashboard />} />
             <Route path="/track/:busId" element={<ProtectedRoute allowedRoles={['passenger','driver','admin']}><LiveTracking /></ProtectedRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

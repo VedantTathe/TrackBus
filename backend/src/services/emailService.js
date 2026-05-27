@@ -54,7 +54,7 @@ export const sendEmail = async ({ to, subject, text, html }) => {
         text,
         html,
       });
-      console.log(`📧 Email delivered successfully. Message ID: ${info.messageId}`);
+      console.log(`📧 Email delivered successfully. To: ${to}. Message ID: ${info.messageId}`);
       return info;
     } catch (error) {
       console.error('❌ SMTP delivery failed, falling back to console:', error.message);
@@ -80,6 +80,9 @@ export const sendEmail = async ({ to, subject, text, html }) => {
  * @param {string} otp 4-6 digit numeric OTP
  */
 export const sendOTPEmail = async (email, otp) => {
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`📧 [DEV] OTP email -> ${email} | OTP: ${otp}`);
+  }
   const subject = `${otp} is your TrackBus Verification Code`;
   const text = `Greetings!\n\nYour TrackBus verification code is: ${otp}\nThis code is valid for 10 minutes. Please do not share it with anyone.`;
   const html = `
@@ -108,6 +111,33 @@ export const sendOTPEmail = async (email, otp) => {
       <div style="border-t: 1px solid #f1f5f9; margin-top: 32px; padding-top: 16px; text-align: center; font-size: 10px; color: #94a3b8; font-weight: 700;">
         © 2026 TrackBus Transit Inc. • Seattle & Pune Flow Networks
       </div>
+    </div>
+  `;
+
+  return await sendEmail({ to: email, subject, text, html });
+};
+
+/**
+ * Sends a driver approval confirmation email.
+ * @param {string} email recipient address
+ * @param {string} driverName approved driver name
+ */
+export const sendDriverApprovedEmail = async (email, driverName = 'Driver') => {
+  const subject = 'TrackBus Driver Verification Approved';
+  const text = `Hello ${driverName},\n\nYour driver profile has been successfully verified by the TrackBus admin team. You can now log in and start your trips.\n\nRegards,\nTrackBus Team`;
+  const html = `
+    <div style="font-family: 'Inter', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #f1f5f9; border-radius: 16px; background-color: #ffffff;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <h2 style="font-weight: 900; color: #16a34a; margin: 0; font-size: 24px;">TrackBus</h2>
+        <span style="font-size: 10px; font-weight: 800; text-transform: uppercase; color: #94a3b8; letter-spacing: 1.5px;">Driver Verification</span>
+      </div>
+      <p style="font-size: 14px; line-height: 1.6; color: #334155;">Hello ${driverName},</p>
+      <p style="font-size: 14px; line-height: 1.6; color: #334155;">
+        Your driver profile has been <strong>successfully verified</strong> by the admin.
+      </p>
+      <p style="font-size: 14px; line-height: 1.6; color: #334155;">
+        You can now log in to TrackBus and start your trip operations.
+      </p>
     </div>
   `;
 

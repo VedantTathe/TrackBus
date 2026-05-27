@@ -1,5 +1,17 @@
 import { AppError } from '../utils/errors.js';
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i;
+const BLOCKED_TYPO_TLDS = new Set(['cpm', 'con', 'cm', 'ogn']);
+
+const isValidEmployeeEmail = (value) => {
+  if (!value || typeof value !== 'string') return false;
+  const email = value.trim().toLowerCase();
+  if (!EMAIL_REGEX.test(email)) return false;
+  const tld = email.split('.').pop();
+  if (BLOCKED_TYPO_TLDS.has(tld)) return false;
+  return true;
+};
+
 /**
  * Validates register payload.
  * Supports backward compatibility by mapping email -> employeeId and defaulting phone if omitted.
@@ -26,6 +38,10 @@ export const validateRegister = (req, res, next) => {
     return next(new AppError('Please provide an email or employee ID', 400));
   }
 
+  if (!isValidEmployeeEmail(employeeId)) {
+    return next(new AppError('Please enter a valid email address', 400));
+  }
+
   next();
 };
 
@@ -43,6 +59,25 @@ export const validateLogin = (req, res, next) => {
 
   if (!employeeId) {
     return next(new AppError('Please provide an email or employee ID', 400));
+  }
+
+  if (!isValidEmployeeEmail(employeeId)) {
+    return next(new AppError('Please enter a valid email address', 400));
+  }
+
+  next();
+};
+
+/**
+ * Validates OTP request payloads (verify/resend).
+ */
+export const validateOtpRequest = (req, res, next) => {
+  const { employeeId } = req.body;
+  if (!employeeId) {
+    return next(new AppError('Employee ID is required', 400));
+  }
+  if (!isValidEmployeeEmail(employeeId)) {
+    return next(new AppError('Please enter a valid email address', 400));
   }
 
   next();

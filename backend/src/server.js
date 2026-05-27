@@ -12,8 +12,8 @@ import routeRoutes from './routes/routeRoutes.js';
 import analyticsRoutes from './routes/analyticsRoutes.js';
 import tripRoutes from './routes/tripRoutes.js';
 import passengerRoutes from './routes/passengerRoutes.js';
-import { seedRoutesIfEmpty, seedBusesIfEmpty, MOCK_BUSES, SEED_ROUTES } from './controllers/busController.js';
 import { seedCitiesIfEmpty } from './services/cityService.js';
+import { ensureAdminUser } from './services/authService.js';
 import Bus from './models/Bus.js';
 import { globalErrorHandler } from './middleware/errorMiddleware.js';
 import { initSocket } from './socket/socketHandler.js';
@@ -41,9 +41,8 @@ const initializeBackend = async () => {
   app.set('isDbConnected', isConnected);
   
   if (isConnected) {
-    // Seed Database with standard route vectors
-    await seedRoutesIfEmpty();
-    await seedBusesIfEmpty();
+    await ensureAdminUser(isConnected);
+    // Do not auto-seed routes/buses; routes should come from real driver-created flows.
     await seedCitiesIfEmpty();
   }
 };

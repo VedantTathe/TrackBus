@@ -31,6 +31,10 @@ const liveTripSchema = new mongoose.Schema({
     ref: 'Route',
     default: null,
   },
+  routeSnapshot: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null,
+  },
   currentLocation: {
     lat: { type: Number, default: 0 },
     lng: { type: Number, default: 0 },

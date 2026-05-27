@@ -88,6 +88,48 @@ export const calculateIntermediateStops = (pathCoordinates, sourceName, destinat
   });
 };
 
+const formatMinutesToHHMM = (totalMinutes) => {
+  const hrs = Math.floor(totalMinutes / 60) % 24;
+  const mins = Math.floor(totalMinutes % 60);
+  return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+};
+
+const ensureTripStopSchedule = (stops = [], tripStart = new Date(), estimatedDuration = 120) => {
+  if (!Array.isArray(stops) || stops.length === 0) return [];
+  const sorted = [...stops].sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
+  const startMinutes = tripStart.getHours() * 60 + tripStart.getMinutes();
+  const stepMinutes = Math.max(2, Math.round((estimatedDuration || 120) / Math.max(1, sorted.length - 1)));
+  let rollingMinutes = startMinutes;
+
+  return sorted.map((stop, idx) => {
+    if (idx > 0) rollingMinutes += stepMinutes;
+    const fallbackArrival = formatMinutesToHHMM(rollingMinutes);
+    const haltMinutes = stop?.isConfirmed === false ? 2 : 3;
+    const fallbackDeparture = idx === sorted.length - 1 ? null : formatMinutesToHHMM(rollingMinutes + haltMinutes);
+    return {
+      ...stop,
+      sequence: idx + 1,
+      arrivalTime: stop?.arrivalTime || fallbackArrival,
+      departureTime: stop?.departureTime || fallbackDeparture
+    };
+  });
+};
+
+const buildRouteSnapshot = (routeObj, source, destination, tripStart) => {
+  if (!routeObj) return null;
+  const scheduledStops = ensureTripStopSchedule(routeObj.stops || [], tripStart, routeObj.estimatedDuration);
+  return {
+    routeName: routeObj.routeName || `${source} – ${destination} Express`,
+    routeNumber: routeObj.routeNumber || null,
+    source: routeObj.source || routeObj.startPoint || source,
+    destination: routeObj.destination || routeObj.endPoint || destination,
+    estimatedDuration: routeObj.estimatedDuration || 120,
+    distanceKm: routeObj.distanceKm || 0,
+    pathCoordinates: Array.isArray(routeObj.pathCoordinates) ? routeObj.pathCoordinates : [],
+    stops: scheduledStops
+  };
+};
+
 
 /**
  * Suggest route templates based on source and destination
@@ -321,6 +363,7 @@ export const startLiveTrip = async (tripData, isDbConnected) => {
   const generatedTripId = `trip-${Date.now()}`;
   const targetBusId = busId || physicalBusId;
   let templateId = null;
+  const tripStart = new Date();
 
   if (customRouteDetails) {
     // Generate a unique route number for this custom-edited route
@@ -375,6 +418,7 @@ export const startLiveTrip = async (tripData, isDbConnected) => {
       if (!busDoc) throw new AppError('Timetabled virtual bus not found', 404);
     }
 
+    let routeSnapshot = null;
     if (!templateId) {
       templateId = selectedRouteTemplateId || busDoc?.route?._id || busDoc?.route || null;
 
@@ -410,6 +454,9 @@ export const startLiveTrip = async (tripData, isDbConnected) => {
     // Resolve initial coords from selectedRouteTemplateId stops if provided
     if (templateId) {
       const routeDoc = await Route.findById(templateId);
+      if (routeDoc) {
+        routeSnapshot = buildRouteSnapshot(routeDoc.toObject(), source, destination, tripStart);
+      }
       if (routeDoc?.stops?.length > 0) {
         const sortedStops = [...routeDoc.stops].sort((a, b) => a.sequence - b.sequence);
         const firstStop = sortedStops[0];
@@ -434,12 +481,13 @@ export const startLiveTrip = async (tripData, isDbConnected) => {
       driverId,
       physicalBusId: busDoc?._id || null,
       selectedRouteTemplateId: templateId,
+      routeSnapshot,
       currentLocation: { lat: initialLat, lng: initialLng },
       pathHistory: [{ lat: initialLat, lng: initialLng, timestamp: new Date() }],
       isActive: true,
       currentStatus: 'active',
-      startedAt: new Date(),
-      lastUpdatedAt: new Date()
+      startedAt: tripStart,
+      lastUpdatedAt: tripStart
     });
 
     // 3. Mark virtual timetabled bus status as active
@@ -481,6 +529,7 @@ export const startLiveTrip = async (tripData, isDbConnected) => {
 
     const initialLat = mockRoute?.stops?.[0]?.lat || 18.5204;
     const initialLng = mockRoute?.stops?.[0]?.lng || 73.8567;
+    const routeSnapshot = buildRouteSnapshot(mockRoute, source, destination, tripStart);
 
     const newMockTrip = {
       _id: `mock-ltrip-${Date.now()}`,
@@ -490,6 +539,7 @@ export const startLiveTrip = async (tripData, isDbConnected) => {
       driverId: mockDriver,
       physicalBusId: mockBus,
       selectedRouteTemplateId: mockRoute,
+      routeSnapshot,
       currentLocation: { lat: initialLat, lng: initialLng },
       pathHistory: [
         { lat: initialLat, lng: initialLng, timestamp: new Date() }
@@ -497,8 +547,8 @@ export const startLiveTrip = async (tripData, isDbConnected) => {
       occupancyLevel: 1,
       speed: 0,
       heading: 0,
-      startedAt: new Date(),
-      lastUpdatedAt: new Date(),
+      startedAt: tripStart,
+      lastUpdatedAt: tripStart,
       isActive: true,
       routeConfidence: 100,
       currentStatus: 'active'

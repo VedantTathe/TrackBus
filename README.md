@@ -10,13 +10,11 @@ trackbus/
 └── frontend/    React + Vite + Leaflet Maps
 ```
 
-## Demo Credentials (password: `password123`)
+## Admin Credentials
 
-| Role      | Email                     | Access                    |
-|-----------|---------------------------|---------------------------|
-| Driver    | driver@trackbus.com       | BLE scan, trip control    |
-| Passenger | passenger@trackbus.com    | Search & track buses      |
-| Admin     | admin@trackbus.com        | Full fleet management     |
+- Admin Email: `vedanttathe30@gmail.com`
+- Admin Password: `TrackBus@2026`
+- Note: This admin user is auto-created one time on backend startup when MongoDB is connected.
 
 ## Test Buses (seeded automatically)
 
