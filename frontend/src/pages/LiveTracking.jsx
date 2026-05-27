@@ -158,13 +158,22 @@ export default function LiveTracking() {
 
           const path = trip?.selectedRouteTemplateId?.pathCoordinates || [];
           path.forEach(pt => {
-            const d = distanceKm({ lat: latitude, lng: longitude }, { pt0: pt[0], pt1: pt[1] });
             const dVal = distanceKm({ lat: latitude, lng: longitude }, { lat: pt[0], lng: pt[1] });
             if (dVal < minDistToRoute) minDistToRoute = dVal;
           });
 
           const isNearBus = distToBus <= 2.0;
           const isNearRoute = minDistToRoute === Number.POSITIVE_INFINITY || minDistToRoute <= 2.0;
+
+          console.log("🔍 Manual Verification Debug Logs:", {
+            passengerCoords: { lat: latitude, lng: longitude },
+            busCoords: { lat: busLat, lng: busLng },
+            distanceToBusKm: distToBus,
+            minDistanceToRouteKm: minDistToRoute,
+            isNearBus,
+            isNearRoute,
+            thresholdKm: 2.0
+          });
 
           if (isNearBus && isNearRoute) {
             setInBus(true);
@@ -285,6 +294,16 @@ export default function LiveTracking() {
 
         const isNearBus = distToBus <= 2.0;
         const isNearRoute = minDistToRoute === Number.POSITIVE_INFINITY || minDistToRoute <= 2.0;
+
+        console.log("📡 Background Telemetry Proximity Verification:", {
+          passengerCoords: { lat: latitude, lng: longitude },
+          busCoords: { lat: busLat, lng: busLng },
+          distanceToBusKm: distToBus,
+          minDistanceToRouteKm: minDistToRoute,
+          isNearBus,
+          isNearRoute,
+          thresholdKm: 2.0
+        });
 
         if (isNearBus && isNearRoute) {
           // Dynamically verified onboard!
