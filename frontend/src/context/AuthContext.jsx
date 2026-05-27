@@ -26,15 +26,31 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (token) {
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      const stored = localStorage.getItem('trackbus_user');
-      if (stored) {
-        try { setUser(JSON.parse(stored)); } catch (e) { logout(); }
+    const initAuth = async () => {
+      if (token) {
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        const stored = localStorage.getItem('trackbus_user');
+        if (stored) {
+          try { setUser(JSON.parse(stored)); } catch (e) { }
+        }
+        
+        try {
+          // Authoritative profile check to correct any mismatched local storage configurations
+          const res = await axios.get('/api/auth/me');
+          if (res.data) {
+            setUser(res.data);
+            localStorage.setItem('trackbus_user', JSON.stringify(res.data));
+          }
+        } catch (err) {
+          console.warn('Authoritative verification failed, logging out:', err.message);
+          logout();
+        }
       }
-    }
-    setLoading(false);
-  }, []);
+      setLoading(false);
+    };
+    
+    initAuth();
+  }, [token]);
 
   const login = (userData, authToken) => {
     setUser(userData);

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import axios from 'axios';
 import {
   Search, Bus, MapPin, Gauge, Clock, ArrowRight,
   Navigation, ChevronRight, X, User
@@ -119,10 +120,10 @@ export default function PassengerDashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  const [query, setQuery] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
-  const [searchMode, setSearchMode] = useState('route'); // bus | route
+  const [cities, setCities] = useState([]);
+  const [errorMsg, setErrorMsg] = useState('');
 
   const [recentBuses, setRecentBuses] = useState([]);
 
@@ -137,24 +138,59 @@ export default function PassengerDashboard() {
     setRecentBuses(loadRecent());
   }, []);
 
+  useEffect(() => {
+    axios.get('/api/passenger/cities')
+      .then(res => {
+        if (res.data?.cities) setCities(res.data.cities);
+      })
+      .catch(() => {});
+  }, []);
+
   const handleSearch = async (e) => {
     e?.preventDefault();
-    const params = new URLSearchParams();
-    if (searchMode === 'route') {
-      params.set('mode', 'route');
-      if (from) params.set('from', from);
-      if (to) params.set('to', to);
-    } else {
-      params.set('mode', 'bus');
-      if (query.trim()) params.set('q', query.trim());
+    setErrorMsg('');
+
+    const cleanFrom = from.trim();
+    const cleanTo = to.trim();
+
+    if (!cleanFrom || !cleanTo) {
+      setErrorMsg('Please enter both Origin and Destination.');
+      return;
     }
+
+    const fromMatch = cities.find(c => c.toLowerCase() === cleanFrom.toLowerCase());
+    const toMatch = cities.find(c => c.toLowerCase() === cleanTo.toLowerCase());
+
+    if (!fromMatch) {
+      setErrorMsg(`Origin "${cleanFrom}" is not in the allowed cities list.`);
+      return;
+    }
+    if (!toMatch) {
+      setErrorMsg(`Destination "${cleanTo}" is not in the allowed cities list.`);
+      return;
+    }
+
+    // Update state to correct casing
+    setFrom(fromMatch);
+    setTo(toMatch);
+
+    const params = new URLSearchParams();
+    params.set('mode', 'route');
+    params.set('from', fromMatch);
+    params.set('to', toMatch);
     navigate(`/search?${params.toString()}`);
   };
 
   const handleQuickRoute = (qr) => {
-    setFrom(qr.from); setTo(qr.to); setSearchMode('route');
+    setFrom(qr.from);
+    setTo(qr.to);
+    setErrorMsg('');
     setTimeout(() => {
-      handleSearch();
+      const params = new URLSearchParams();
+      params.set('mode', 'route');
+      params.set('from', qr.from);
+      params.set('to', qr.to);
+      navigate(`/search?${params.toString()}`);
     }, 50);
   };
 
@@ -188,41 +224,51 @@ export default function PassengerDashboard() {
           <p style={{ fontSize: '0.82rem', marginTop: 2 }}>Where are you headed today?</p>
         </div>
 
-        {/* Search — sticky like WIMT */}
+        {/* Search — Corridor Search */}
         <div className="sticky-search">
-          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-            <div className="tabs" style={{ flex: 1 }}>
-              <button className={`tab ${searchMode === 'bus' ? 'active' : ''}`} onClick={() => setSearchMode('bus')}>Bus Number</button>
-              <button className={`tab ${searchMode === 'route' ? 'active' : ''}`} onClick={() => setSearchMode('route')}>From → To</button>
+          <form onSubmit={handleSearch} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <div style={{ flex: 1 }}>
+                <input
+                  className="input"
+                  value={from}
+                  onChange={e => {
+                    setFrom(e.target.value);
+                    if (errorMsg) setErrorMsg('');
+                  }}
+                  placeholder="From (e.g. Pune)"
+                  list="city-list"
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <input
+                  className="input"
+                  value={to}
+                  onChange={e => {
+                    setTo(e.target.value);
+                    if (errorMsg) setErrorMsg('');
+                  }}
+                  placeholder="To (e.g. Sangli)"
+                  list="city-list"
+                />
+              </div>
+              <button type="submit" className="btn btn-primary" style={{ padding: '11px 14px' }}>
+                <Search size={14} />
+              </button>
             </div>
-          </div>
+          </form>
 
-          {searchMode === 'bus' ? (
-            <form onSubmit={handleSearch}>
-              <div className="search-bar">
-                <Search size={15} style={{ marginLeft: 12, color: 'var(--text-muted)', flexShrink: 0 }} />
-                <input className="search-bar-input" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search bus number or route…" />
-                {query && <button type="button" className="btn btn-ghost" onClick={() => setQuery('')} style={{ padding: '0 8px', color: 'var(--text-muted)' }}><X size={14} /></button>}
-                <button type="submit" className="search-bar-btn">
-                  <ArrowRight size={14} />
-                </button>
-              </div>
-            </form>
-          ) : (
-            <form onSubmit={handleSearch} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <div style={{ flex: 1 }}>
-                  <input className="input" value={from} onChange={e => setFrom(e.target.value)} placeholder="From (e.g. Pune)" />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <input className="input" value={to} onChange={e => setTo(e.target.value)} placeholder="To (e.g. Sangli)" />
-                </div>
-                <button type="submit" className="btn btn-primary" style={{ padding: '11px 14px' }}>
-                  <Search size={14} />
-                </button>
-              </div>
-            </form>
+          {errorMsg && (
+            <div className="alert alert-danger" style={{ fontSize: '0.78rem', padding: '8px 12px', marginTop: 8, borderRadius: 8 }}>
+              {errorMsg}
+            </div>
           )}
+
+          <datalist id="city-list">
+            {cities.map(city => (
+              <option key={city} value={city} />
+            ))}
+          </datalist>
 
           {/* Quick routes */}
           <div className="chip-list" style={{ marginTop: 8 }}>
@@ -236,14 +282,14 @@ export default function PassengerDashboard() {
 
         {/* Results / List */}
         <div className="section-header">
-          <span className="section-title">Recent Buses</span>
+          <span className="section-title">Recent Transits</span>
         </div>
 
         {displayBuses.length === 0 ? (
           <div className="empty-state">
             <div className="empty-icon"><Bus size={24} /></div>
-            <h3>No recent buses yet</h3>
-            <p>Search for a bus or track one to see it here</p>
+            <h3>No recent transits yet</h3>
+            <p>Search for a corridor or track one to see it here</p>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingBottom: 8 }}>
