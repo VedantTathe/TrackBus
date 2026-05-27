@@ -85,6 +85,7 @@ export default function LiveTracking() {
   // Passenger check-in and voting states
   const [inBus, setInBus] = useState(false);
   const [onBoardWarning, setOnBoardWarning] = useState(false);
+  const [verifyingOnboard, setVerifyingOnboard] = useState(false);
   const [passengerVote, setPassengerVote] = useState(null);
   const [passengerId, setPassengerId] = useState('');
   const [hasVoted, setHasVoted] = useState(false);
@@ -124,6 +125,8 @@ export default function LiveTracking() {
 
   const handleInBusConfirm = (ans) => {
     if (!ans) return;
+    setVerifyingOnboard(true);
+    setOnBoardWarning(false);
 
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
@@ -134,7 +137,10 @@ export default function LiveTracking() {
           const busLat = trip?.currentLocation?.lat || trip?.latitude || 0;
           const busLng = trip?.currentLocation?.lng || trip?.longitude || 0;
 
-          if (busLat === 0 || busLng === 0) return;
+          if (busLat === 0 || busLng === 0) {
+            setVerifyingOnboard(false);
+            return;
+          }
 
           // Calculate proximity distance to the bus
           const distToBus = distanceKm(
@@ -152,8 +158,9 @@ export default function LiveTracking() {
 
           const path = trip?.selectedRouteTemplateId?.pathCoordinates || [];
           path.forEach(pt => {
-            const d = distanceKm({ lat: latitude, lng: longitude }, { lat: pt[0], lng: pt[1] });
-            if (d < minDistToRoute) minDistToRoute = d;
+            const d = distanceKm({ lat: latitude, lng: longitude }, { pt0: pt[0], pt1: pt[1] });
+            const dVal = distanceKm({ lat: latitude, lng: longitude }, { lat: pt[0], lng: pt[1] });
+            if (dVal < minDistToRoute) minDistToRoute = dVal;
           });
 
           const isNearBus = distToBus <= 2.0;
@@ -162,6 +169,7 @@ export default function LiveTracking() {
           if (isNearBus && isNearRoute) {
             setInBus(true);
             setOnBoardWarning(false);
+            setVerifyingOnboard(false);
             localStorage.setItem(`in_bus_${busId}`, 'true');
 
             // Use current passenger's verified coordinates for map showing and speedometer directly
@@ -214,6 +222,7 @@ export default function LiveTracking() {
             setShowContributionModal(true);
           } else {
             setInBus(false);
+            setVerifyingOnboard(false);
             localStorage.removeItem(`in_bus_${busId}`);
             setOnBoardWarning(true);
             setTimeout(() => {
@@ -224,6 +233,7 @@ export default function LiveTracking() {
         (err) => {
           console.warn('Geolocation failed during onboarding:', err.message);
           setInBus(false);
+          setVerifyingOnboard(false);
           setOnBoardWarning(true);
           setTimeout(() => {
             setOnBoardWarning(false);
@@ -233,6 +243,7 @@ export default function LiveTracking() {
       );
     } else {
       setInBus(false);
+      setVerifyingOnboard(false);
     }
   };
 
@@ -999,47 +1010,55 @@ export default function LiveTracking() {
               gap: 8,
               padding: '6px 10px',
               borderRadius: 20,
-              background: inBus ? 'rgba(22, 163, 74, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+              background: verifyingOnboard ? 'rgba(255, 255, 255, 0.95)' : (inBus ? 'rgba(22, 163, 74, 0.95)' : 'rgba(255, 255, 255, 0.95)'),
               backdropFilter: 'blur(10px)',
-              border: inBus ? '1.5px solid #16a34a' : '1.5px solid var(--border)',
+              border: verifyingOnboard ? '1.5px solid var(--accent)' : (inBus ? '1.5px solid #16a34a' : '1.5px solid var(--border)'),
               boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
               transition: 'all 0.3s ease',
-              cursor: 'pointer',
-              userSelect: 'none'
+              cursor: verifyingOnboard ? 'default' : 'pointer',
+              userSelect: 'none',
+              opacity: verifyingOnboard ? 0.85 : 1
             }} onClick={() => {
+              if (verifyingOnboard) return;
               if (inBus) {
                 handleCheckOut();
               } else {
                 handleInBusConfirm(true);
               }
             }}>
-              <Bus size={14} style={{ color: inBus ? 'white' : 'var(--text-secondary)' }} />
+              {verifyingOnboard ? (
+                <RefreshCw size={14} className="animate-spin" style={{ color: 'var(--accent)' }} />
+              ) : (
+                <Bus size={14} style={{ color: inBus ? 'white' : 'var(--text-secondary)' }} />
+              )}
               <span style={{
                 fontSize: '0.72rem',
                 fontWeight: 800,
-                color: inBus ? 'white' : 'var(--text-primary)'
+                color: verifyingOnboard ? 'var(--accent)' : (inBus ? 'white' : 'var(--text-primary)')
               }}>
-                Inside Bus?
+                {verifyingOnboard ? 'Verifying...' : 'Inside Bus?'}
               </span>
-              <div style={{
-                width: 28,
-                height: 16,
-                borderRadius: 10,
-                background: inBus ? 'rgba(255,255,255,0.3)' : 'var(--border-strong)',
-                position: 'relative',
-                transition: 'all 0.3s ease'
-              }}>
+              {!verifyingOnboard && (
                 <div style={{
-                  width: 12,
-                  height: 12,
-                  borderRadius: '50%',
-                  background: 'white',
-                  position: 'absolute',
-                  top: 2,
-                  left: inBus ? 14 : 2,
-                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
-                }} />
-              </div>
+                  width: 28,
+                  height: 16,
+                  borderRadius: 10,
+                  background: inBus ? 'rgba(255,255,255,0.3)' : 'var(--border-strong)',
+                  position: 'relative',
+                  transition: 'all 0.3s ease'
+                }}>
+                  <div style={{
+                    width: 12,
+                    height: 12,
+                    borderRadius: '50%',
+                    background: 'white',
+                    position: 'absolute',
+                    top: 2,
+                    left: inBus ? 14 : 2,
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+                  }} />
+                </div>
+              )}
             </div>
 
             {/* Floating Speedometer (Bottom Left Overlay) */}
