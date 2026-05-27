@@ -20,7 +20,7 @@ const router = express.Router();
 
 // Administrative Roster Routes (Admin Only clearance)
 router.post('/', protect, authorize('admin'), validateCreateBus, createBus);
-router.get('/', protect, authorize('admin'), getBuses);
+router.get('/', protect, authorize('admin', 'driver'), getBuses);
 router.put('/:id', protect, authorize('admin'), updateBus);
 router.delete('/:id', protect, authorize('admin'), removeBus);
 router.put('/assign-driver', protect, authorize('admin'), validateAssignDriver, assignDriver);

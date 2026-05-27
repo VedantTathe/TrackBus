@@ -3,9 +3,15 @@
  * Handles all passenger-specific operations like nearby buses, route search, favorites, etc.
  */
 import Bus from '../models/Bus.js';
+import City from '../models/City.js';
 import Route from '../models/Route.js';
 import Trip from '../models/Trip.js';
 import User from '../models/User.js';
+import LiveTrip from '../models/LiveTrip.js';
+import { SEED_ROUTES } from '../services/busService.js';
+import { MOCK_LIVETRIPS, submitPassengerOccupancyVote, checkInPassenger, checkOutPassenger } from '../services/tripService.js';
+import { loadCitiesFromCsv } from '../services/cityService.js';
+import { CITY_COORDINATES } from '../data/cityCoordinates.js';
 import {
   calculateDistance,
   formatDistance,
@@ -377,6 +383,335 @@ export const getAllRoutes = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/passenger/search
+ * Search corridor journeys including live trips and route templates
+ */
+export const searchCorridors = async (req, res) => {
+  try {
+    const isDbConnected = req.app.get('isDbConnected');
+    const { from = '', to = '', q = '' } = req.query;
+
+    let routeTemplates = [];
+    let activeTrips = [];
+
+    const fromClean = from.trim();
+    const toClean = to.trim();
+    const qClean = q.trim();
+
+    // 1. Search Route Templates
+    if (fromClean && toClean) {
+      if (isDbConnected) {
+        routeTemplates = await Route.find({
+          $or: [
+            { source: new RegExp(fromClean, 'i'), destination: new RegExp(toClean, 'i') },
+            { startPoint: new RegExp(fromClean, 'i'), endPoint: new RegExp(toClean, 'i') }
+          ]
+        }).lean();
+      } else {
+        routeTemplates = SEED_ROUTES.filter(r =>
+          (new RegExp(fromClean, 'i').test(r.source || r.startPoint)) &&
+          (new RegExp(toClean, 'i').test(r.destination || r.endPoint))
+        );
+      }
+    } else if (qClean) {
+      if (isDbConnected) {
+        routeTemplates = await Route.find({
+          $or: [
+            { routeName: new RegExp(qClean, 'i') },
+            { routeNumber: new RegExp(qClean, 'i') },
+            { source: new RegExp(qClean, 'i') },
+            { destination: new RegExp(qClean, 'i') },
+            { startPoint: new RegExp(qClean, 'i') },
+            { endPoint: new RegExp(qClean, 'i') },
+            { 'stops.name': new RegExp(qClean, 'i') }
+          ]
+        }).lean();
+      } else {
+        routeTemplates = SEED_ROUTES.filter(r =>
+          new RegExp(qClean, 'i').test(r.routeName) ||
+          new RegExp(qClean, 'i').test(r.routeNumber) ||
+          new RegExp(qClean, 'i').test(r.source || r.startPoint) ||
+          new RegExp(qClean, 'i').test(r.destination || r.endPoint) ||
+          (r.stops && r.stops.some(s => new RegExp(qClean, 'i').test(s.name)))
+        );
+      }
+    } else {
+      if (isDbConnected) {
+        routeTemplates = await Route.find().lean();
+      } else {
+        routeTemplates = SEED_ROUTES;
+      }
+    }
+
+    // 2. Fetch Active Live Trips
+    let allActiveTrips = [];
+    if (isDbConnected) {
+      allActiveTrips = await LiveTrip.find({ isActive: true })
+        .populate('driverId', 'name employeeId phone')
+        .populate('physicalBusId')
+        .populate('selectedRouteTemplateId')
+        .lean();
+    } else {
+      allActiveTrips = MOCK_LIVETRIPS.filter(t => t.isActive);
+    }
+
+    // 3. Filter Active Trips by Corridor / Search Criteria and calculate ETA/Distance
+    if (fromClean && toClean) {
+      activeTrips = allActiveTrips.filter(trip => {
+        const matchesDirectly = (new RegExp(fromClean, 'i').test(trip.source) && new RegExp(toClean, 'i').test(trip.destination));
+        
+        // Dynamic corridor range match: check if both searched hubs exist in guidance stops sequence
+        const stops = trip.selectedRouteTemplateId?.stops || [];
+        const fromStopIndex = stops.findIndex(s => new RegExp(fromClean, 'i').test(s.name));
+        const toStopIndex = stops.findIndex(s => new RegExp(toClean, 'i').test(s.name));
+        const matchesCorridorRange = fromStopIndex !== -1 && toStopIndex !== -1 && fromStopIndex < toStopIndex;
+
+        return matchesDirectly || matchesCorridorRange;
+      }).map(trip => {
+        // Find coordinates of target destination stop
+        let destLat = null;
+        let destLng = null;
+
+        const stops = trip.selectedRouteTemplateId?.stops || [];
+        const toStop = stops.find(s => new RegExp(toClean, 'i').test(s.name));
+        
+        if (toStop) {
+          destLat = toStop.lat;
+          destLng = toStop.lng;
+        } else if (stops.length > 0) {
+          const lastStop = stops[stops.length - 1];
+          destLat = lastStop.lat;
+          destLng = lastStop.lng;
+        }
+
+        let etaMinutes = null;
+        let distanceText = 'N/A';
+        let distanceVal = null;
+
+        const tripLat = trip.currentLocation?.lat || trip.latitude;
+        const tripLng = trip.currentLocation?.lng || trip.longitude;
+
+        if (destLat && destLng && tripLat && tripLng) {
+          distanceVal = calculateDistance(tripLat, tripLng, destLat, destLng);
+          distanceText = formatDistance(distanceVal);
+          
+          // Use current speed if > 10 km/h, otherwise fallback to standard average transit speed (40 km/h)
+          const speedVal = trip.speed > 10 ? trip.speed : 40;
+          etaMinutes = Math.round((distanceVal / speedVal) * 60);
+        }
+
+        return {
+          ...trip,
+          etaMinutes,
+          distanceText,
+          distanceKm: distanceVal
+        };
+      });
+    } else if (qClean) {
+      activeTrips = allActiveTrips.filter(trip => {
+        const busNum = trip.physicalBusId?.busNumber || '';
+        const routeName = trip.selectedRouteTemplateId?.routeName || '';
+        return (
+          new RegExp(qClean, 'i').test(trip.source) ||
+          new RegExp(qClean, 'i').test(trip.destination) ||
+          new RegExp(qClean, 'i').test(busNum) ||
+          new RegExp(qClean, 'i').test(routeName) ||
+          (trip.selectedRouteTemplateId && routeTemplates.some(rt => rt._id.toString() === (trip.selectedRouteTemplateId._id || trip.selectedRouteTemplateId).toString()))
+        );
+      });
+    } else {
+      activeTrips = allActiveTrips;
+    }
+
+    res.status(200).json({
+      success: true,
+      activeTrips,
+      routeTemplates
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to search corridor journeys',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * GET /api/passenger/cities
+ * Get all unique city/station names currently present in seeded routes and stops
+ */
+export const getUniqueCities = async (req, res) => {
+  try {
+    const isDbConnected = req.app.get('isDbConnected');
+    let sortedCities = [];
+
+    if (isDbConnected) {
+      const cities = await City.find().sort({ nameLower: 1 }).lean();
+      sortedCities = cities.map((city) => city.name);
+    } else {
+      sortedCities = loadCitiesFromCsv();
+    }
+
+    res.status(200).json({
+      success: true,
+      count: sortedCities.length,
+      cities: sortedCities
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch unique cities',
+      error: error.message
+    });
+  }
+};
+
+export const getCityCoords = async (req, res) => {
+  try {
+    const { name } = req.query;
+    if (!name) {
+      return res.status(400).json({ success: false, message: 'City name is required' });
+    }
+    const clean = name.trim().toLowerCase();
+    const coords = CITY_COORDINATES[clean];
+    if (!coords) {
+      return res.status(404).json({ success: false, message: `Coordinates for "${name}" not found.` });
+    }
+    res.status(200).json({
+      success: true,
+      name,
+      coordinates: { lat: coords[0], lng: coords[1] }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to fetch coordinates', error: error.message });
+  }
+};
+
+export const submitOccupancyVote = async (req, res) => {
+  try {
+    const { tripId } = req.params;
+    const { passengerId, vote } = req.body;
+    const isDbConnected = req.app.get('isDbConnected');
+
+    if (!passengerId || !vote) {
+      return res.status(400).json({
+        success: false,
+        message: 'passengerId and vote are required parameters.'
+      });
+    }
+
+    const trip = await submitPassengerOccupancyVote(tripId, passengerId, vote, isDbConnected);
+
+    // Broadcast occupancy update via Socket.IO if active
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('trip-occupancy-changed', {
+        tripId: trip.tripId,
+        occupancyLevel: trip.occupancyLevel
+      });
+      if (trip.physicalBusId) {
+        const busId = trip.physicalBusId._id || trip.physicalBusId;
+        io.to(`bus:${busId}`).emit('crowd-update', {
+          busId,
+          crowdLevel: trip.occupancyLevel
+        });
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Occupancy vote recorded successfully.',
+      occupancyLevel: trip.occupancyLevel
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to record occupancy vote.',
+      error: error.message
+    });
+  }
+};
+
+export const submitPassengerCheckIn = async (req, res) => {
+  try {
+    const { tripId } = req.params;
+    const { passengerId } = req.body;
+    const isDbConnected = req.app.get('isDbConnected');
+
+    if (!passengerId) {
+      return res.status(400).json({
+        success: false,
+        message: 'passengerId is required.'
+      });
+    }
+
+    const trip = await checkInPassenger(tripId, passengerId, isDbConnected);
+
+    // Broadcast passenger check-in to listeners if needed
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('passenger-checked-in', {
+        tripId: trip.tripId,
+        passengerId,
+        checkedInCount: trip.checkedInPassengers ? trip.checkedInPassengers.length : 0
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Passenger checked in successfully at DB level.',
+      checkedInPassengers: trip.checkedInPassengers || []
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to register passenger check-in.',
+      error: error.message
+    });
+  }
+};
+
+export const submitPassengerCheckOut = async (req, res) => {
+  try {
+    const { tripId } = req.params;
+    const { passengerId } = req.body;
+    const isDbConnected = req.app.get('isDbConnected');
+
+    if (!passengerId) {
+      return res.status(400).json({
+        success: false,
+        message: 'passengerId is required.'
+      });
+    }
+
+    const trip = await checkOutPassenger(tripId, passengerId, isDbConnected);
+
+    // Broadcast passenger check-out to listeners if needed
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('passenger-checked-out', {
+        tripId: trip.tripId,
+        passengerId,
+        checkedInCount: trip.checkedInPassengers ? trip.checkedInPassengers.length : 0
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Passenger checked out successfully at DB level.',
+      checkedInPassengers: trip.checkedInPassengers || []
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to register passenger check-out.',
+      error: error.message
+    });
+  }
+};
+
 export default {
   getNearbyBuses,
   getActiveBuses,
@@ -385,4 +720,10 @@ export default {
   getBusDetails,
   getActiveTrips,
   getAllRoutes,
+  searchCorridors,
+  getUniqueCities,
+  getCityCoords,
+  submitOccupancyVote,
+  submitPassengerCheckIn,
+  submitPassengerCheckOut,
 };

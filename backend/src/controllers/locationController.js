@@ -1,10 +1,12 @@
 import { catchAsync, AppError } from '../utils/errors.js';
-import * as locationService from '../services/locationService.js';
 import Bus from '../models/Bus.js';
+import LiveTrip from '../models/LiveTrip.js';
 import { MOCK_BUSES } from '../services/busService.js';
+import { MOCK_LIVETRIPS } from '../services/tripService.js';
+import * as locationService from '../services/locationService.js';
 
 /**
- * @desc    Submit live GPS telemetry update
+ * @desc    Submit live GPS telemetry update for active LiveTrip
  * @route   POST /api/location/update
  * @access  Private (Driver Only)
  */
@@ -17,64 +19,154 @@ export const updateLocation = catchAsync(async (req, res, next) => {
     return next(new AppError('Please provide latitude and longitude coordinates', 400));
   }
 
-  let bus;
+  const latNum = Number(latitude);
+  const lngNum = Number(longitude);
+  const spdNum = Number(speed || 0);
+  const hdgNum = Number(heading || 0);
+  const timestamp = new Date();
+
+  let activeTrip = null;
 
   if (isDbConnected) {
-    // 1. Locate bus assigned to driver
-    bus = await Bus.findOne({ assignedDriver: userId });
+    // 1. Locate active LiveTrip for driver
+    activeTrip = await LiveTrip.findOne({ driverId: userId, isActive: true })
+      .populate('physicalBusId')
+      .populate('selectedRouteTemplateId');
 
-    // Fallback: search by busNumber if sent
-    if (!bus && busNumber) {
-      bus = await Bus.findOne({ busNumber });
+    // Fallback: search by busNumber if driver mapping is tricky
+    if (!activeTrip && busNumber) {
+      const bus = await Bus.findOne({ busNumber });
+      if (bus) {
+        activeTrip = await LiveTrip.findOne({ physicalBusId: bus._id, isActive: true })
+          .populate('physicalBusId')
+          .populate('selectedRouteTemplateId');
+      }
     }
   } else {
-    // Mock Fallback: locate assigned mock bus
-    bus = MOCK_BUSES.find(b => b.assignedDriver && (b.assignedDriver._id === userId || b.assignedDriver.id === userId));
+    // Mock Fallback: locate assigned mock live trip
+    activeTrip = MOCK_LIVETRIPS.find(t => t.isActive && (t.driverId._id === userId || t.driverId === userId));
 
-    // Fallback search by busNumber
-    if (!bus && busNumber) {
-      bus = MOCK_BUSES.find(b => b.busNumber.toUpperCase() === busNumber.toUpperCase());
+    // Fallback: search by mock busNumber
+    if (!activeTrip && busNumber) {
+      activeTrip = MOCK_LIVETRIPS.find(t => t.isActive && t.physicalBusId && t.physicalBusId.busNumber === busNumber);
     }
   }
 
-  if (!bus) {
-    return next(new AppError('No active or assigned bus found for this driver telemetry stream', 404));
+  if (!activeTrip) {
+    return next(new AppError('No active live trip session found for this driver telemetry stream', 404));
   }
 
-  // 2. Commit coordinates to database log history and update core Bus coordinates
-  const updatedBus = await locationService.saveLocationLog(bus._id, req.body, isDbConnected);
+  // 2. Commit coordinate update to LiveTrip and push to pathHistory
+  if (isDbConnected) {
+    if (req.body.resetHistory) {
+      activeTrip.pathHistory = [];
+      console.log(`🧹 Cleared path history contamination for active trip: ${activeTrip.tripId}`);
+    }
+    activeTrip.currentLocation = { lat: latNum, lng: lngNum };
+    activeTrip.speed = spdNum;
+    activeTrip.heading = hdgNum;
+    activeTrip.lastUpdatedAt = timestamp;
+    activeTrip.pathHistory.push({ lat: latNum, lng: lngNum, timestamp });
+    await activeTrip.save();
+
+    // Sync to legacy Bus model if attached, so old clients still show the bus location
+    if (activeTrip.physicalBusId) {
+      await Bus.findByIdAndUpdate(activeTrip.physicalBusId._id, {
+        latitude: latNum,
+        longitude: lngNum,
+        speed: spdNum,
+        heading: hdgNum,
+        lastUpdated: timestamp
+      });
+      // Log location log coordinates in legacy Location logs
+      try {
+        await locationService.saveLocationLog(activeTrip.physicalBusId._id, {
+          latitude: latNum,
+          longitude: lngNum,
+          speed: spdNum,
+          heading: hdgNum,
+          timestamp
+        }, true);
+      } catch (err) {
+        console.warn('Failed to log legacy location coordinate:', err.message);
+      }
+    }
+  } else {
+    // Update mock active trip
+    if (req.body.resetHistory) {
+      activeTrip.pathHistory = [];
+      console.log(`🧹 Mock: Cleared path history contamination for active trip: ${activeTrip.tripId}`);
+    }
+    activeTrip.currentLocation = { lat: latNum, lng: lngNum };
+    activeTrip.speed = spdNum;
+    activeTrip.heading = hdgNum;
+    activeTrip.lastUpdatedAt = timestamp;
+    activeTrip.pathHistory.push({ lat: latNum, lng: lngNum, timestamp });
+
+    // Sync to mock bus if attached
+    if (activeTrip.physicalBusId) {
+      const mb = MOCK_BUSES.find(b => b._id === activeTrip.physicalBusId._id);
+      if (mb) {
+        mb.latitude = latNum;
+        mb.longitude = lngNum;
+        mb.speed = spdNum;
+        mb.heading = hdgNum;
+        mb.lastUpdated = timestamp;
+      }
+    }
+  }
 
   // 3. Broadcast real-time Socket.IO telemetry feeds
   const io = req.app.get('io');
   if (io) {
-    // Extract route ID for room filtering
-    let routeId = '60c72b2f9b1d8b22a8a8e101'; // default backup
-    if (updatedBus.route) {
-      routeId = updatedBus.route._id || updatedBus.route;
-    }
+    const tripId = activeTrip.tripId;
+    const busNum = activeTrip.physicalBusId?.busNumber || busNumber || 'N/A';
+    const routeId = activeTrip.selectedRouteTemplateId?._id?.toString() || activeTrip.selectedRouteTemplateId?.toString() || 'mock-route-id';
 
     const payload = {
-      busNumber: updatedBus.busNumber,
-      routeId: routeId.toString(),
-      latitude: Number(latitude),
-      longitude: Number(longitude),
-      speed: Number(speed || 0),
-      heading: Number(heading || 0),
-      currentCrowd: Number(updatedBus.currentCrowd || 1),
-      lastUpdated: updatedBus.lastUpdated
+      tripId,
+      busNumber: busNum,
+      routeId,
+      latitude: latNum,
+      longitude: lngNum,
+      currentLocation: activeTrip.currentLocation,
+      pathHistory: activeTrip.pathHistory,
+      speed: spdNum,
+      heading: hdgNum,
+      occupancyLevel: activeTrip.occupancyLevel,
+      currentCrowd: activeTrip.occupancyLevel, // backward compatibility
+      lastUpdated: timestamp
     };
 
-    // Broadcast specifically to the subscribed route room
-    io.to(`route:${payload.routeId}`).emit('bus-location-changed', payload);
+    // Broadcast to trip-specific room
+    io.to(`trip:${tripId}`).emit('trip-location-changed', payload);
 
-    // Broadcast globally for municipal feeds overlay
+    // Broadcast to legacy route room
+    io.to(`route:${routeId}`).emit('bus-location-changed', payload);
+
+    // Broadcast specifically to the bus-tracking room (backward compatibility)
+    if (activeTrip.physicalBusId) {
+      const busId = activeTrip.physicalBusId._id?.toString() || activeTrip.physicalBusId?.toString();
+      io.to(`bus:${busId}`).emit('bus-location-update', {
+        busId,
+        busNumber: busNum,
+        latitude: latNum,
+        longitude: lngNum,
+        speed: spdNum,
+        heading: hdgNum,
+        currentCrowd: activeTrip.occupancyLevel,
+        timestamp
+      });
+    }
+
+    // Broadcast globally for municipal overlays
     io.emit('global-bus-location-changed', payload);
   }
 
   res.status(200).json({
     success: true,
     message: 'GPS telemetry logged and broadcasted successfully',
-    bus: updatedBus
+    trip: activeTrip
   });
 });
 

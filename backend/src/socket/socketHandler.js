@@ -1,6 +1,9 @@
 import Bus from '../models/Bus.js';
+import LiveTrip from '../models/LiveTrip.js';
 import { MOCK_BUSES, SEED_ROUTES } from '../services/busService.js';
+import { MOCK_LIVETRIPS } from '../services/tripService.js';
 import { saveLocationLog } from '../services/locationService.js';
+import { calculateDistance } from '../utils/geolocation.js';
 
 /**
  * Initialize Socket.IO connection tree and register events.
@@ -58,6 +61,18 @@ export const initSocket = (io, app) => {
               bus.currentCrowd = currentCrowd;
               await bus.save();
             }
+
+            // Sync driver location check-in with LiveTrip
+            const activeTrip = await LiveTrip.findOne({ physicalBusId: bus._id, isActive: true });
+            if (activeTrip) {
+              activeTrip.lastDriverLocationUpdate = timestamp;
+              activeTrip.currentLocation = { lat: Number(latitude), lng: Number(longitude) };
+              activeTrip.speed = Number(speed || 0);
+              activeTrip.heading = Number(heading || 0);
+              activeTrip.lastUpdatedAt = timestamp;
+              activeTrip.pathHistory.push({ lat: Number(latitude), lng: Number(longitude), timestamp });
+              await activeTrip.save();
+            }
           }
         } else {
           // Sync mock state array coordinates
@@ -75,6 +90,17 @@ export const initSocket = (io, app) => {
               mockBus.currentCrowd = currentCrowd;
             }
             mockBus.status = 'active';
+
+            // Sync driver location check-in with MOCK_LIVETRIPS
+            const mockTrip = MOCK_LIVETRIPS.find(t => t.physicalBusId?._id === mockBus._id && t.isActive);
+            if (mockTrip) {
+              mockTrip.lastDriverLocationUpdate = timestamp;
+              mockTrip.currentLocation = { lat: Number(latitude), lng: Number(longitude) };
+              mockTrip.speed = Number(speed || 0);
+              mockTrip.heading = Number(heading || 0);
+              mockTrip.lastUpdatedAt = timestamp;
+              mockTrip.pathHistory.push({ lat: Number(latitude), lng: Number(longitude), timestamp });
+            }
           }
         }
       } catch (err) {
@@ -93,10 +119,117 @@ export const initSocket = (io, app) => {
     // Join tracking room for a specific bus
     socket.on('track-bus', (busId) => {
       socket.join(`bus:${busId}`);
-      console.log(`📍 Socket ${socket.id} is now tracking bus: ${busId}`);
+      socket.join(`trip:${busId}`);
+      console.log(`📍 Socket ${socket.id} is now tracking bus/trip: ${busId}`);
       
       // Send acknowledgment
       socket.emit('tracking-started', { busId, timestamp: new Date() });
+    });
+
+    // Passenger reports their live position (Crowd-sourced location sharing)
+    socket.on('passenger-location-update', async (data) => {
+      // Expected structure: { tripId, passengerId, latitude, longitude, speed, heading, accuracy }
+      const { tripId, passengerId, latitude, longitude, speed = 0, heading = 0, accuracy } = data;
+      const isDbConnected = app.get('isDbConnected');
+      const timestamp = new Date();
+
+      const lat = Number(latitude);
+      const lng = Number(longitude);
+
+      if (isNaN(lat) || isNaN(lng) || lat === 0 || lng === 0) return; // filter bad telemetry
+
+      try {
+        let activeTrip = null;
+        if (isDbConnected) {
+          activeTrip = await LiveTrip.findOne({ tripId, isActive: true }).populate('physicalBusId');
+        } else {
+          activeTrip = MOCK_LIVETRIPS.find(t => (t.tripId === tripId || t._id === tripId) && t.isActive);
+        }
+
+        if (!activeTrip) return;
+
+        // Verify coordinate proximity to last known coordinates or stops to filter spam
+        const lastKnownLat = activeTrip.currentLocation?.lat || activeTrip.latitude || 0;
+        const lastKnownLng = activeTrip.currentLocation?.lng || activeTrip.longitude || 0;
+
+        let isValidProximity = true;
+        if (lastKnownLat !== 0 && lastKnownLng !== 0) {
+          const dist = calculateDistance(lat, lng, lastKnownLat, lastKnownLng);
+          if (dist > 5.0) { // filter coordinate updates further than 5 km away
+            console.warn(`⚠️ Passenger coordinate update rejected: too far from last known bus location (${dist.toFixed(2)} km)`);
+            isValidProximity = false;
+          }
+        }
+
+        if (isValidProximity) {
+          // Check if driver GPS telemetry is stale (no updates in > 20 seconds)
+          const lastDriverUpdate = activeTrip.lastDriverLocationUpdate 
+            ? new Date(activeTrip.lastDriverLocationUpdate).getTime() 
+            : new Date(activeTrip.lastUpdatedAt || activeTrip.startedAt || 0).getTime();
+            
+          const isDriverStale = (Date.now() - lastDriverUpdate) > 20000;
+
+          if (isDriverStale) {
+            console.log(`📡 Driver GPS signal stale for trip ${tripId}. Falling back to crowd-sourced passenger updates!`);
+
+            // Inject coordinate update as core bus coordinates
+            if (isDbConnected) {
+              activeTrip.currentLocation = { lat, lng };
+              activeTrip.speed = Number(speed || 0);
+              activeTrip.heading = Number(heading || 0);
+              activeTrip.lastUpdatedAt = timestamp;
+              activeTrip.pathHistory.push({ lat, lng, timestamp });
+              await activeTrip.save();
+
+              if (activeTrip.physicalBusId) {
+                await Bus.findByIdAndUpdate(activeTrip.physicalBusId._id, {
+                  latitude: lat,
+                  longitude: lng,
+                  speed: Number(speed || 0),
+                  heading: Number(heading || 0),
+                  lastUpdated: timestamp
+                });
+              }
+            } else {
+              activeTrip.currentLocation = { lat, lng };
+              activeTrip.speed = Number(speed || 0);
+              activeTrip.heading = Number(heading || 0);
+              activeTrip.lastUpdatedAt = timestamp;
+              activeTrip.pathHistory.push({ lat, lng, timestamp });
+
+              if (activeTrip.physicalBusId) {
+                const busNum = activeTrip.physicalBusId.busNumber;
+                const mockBus = MOCK_BUSES.find(b => b.busNumber === busNum);
+                if (mockBus) {
+                  mockBus.latitude = lat;
+                  mockBus.longitude = lng;
+                  mockBus.speed = Number(speed || 0);
+                  mockBus.heading = Number(heading || 0);
+                  mockBus.lastUpdated = timestamp;
+                }
+              }
+            }
+
+            // Broadcast the location change to everyone tracking this trip!
+            const payload = {
+              tripId,
+              busNumber: activeTrip.physicalBusId?.busNumber || tripId,
+              latitude: lat,
+              longitude: lng,
+              speed: Number(speed || 0),
+              heading: Number(heading || 0),
+              lastUpdated: timestamp,
+              pathHistory: activeTrip.pathHistory || []
+            };
+
+            io.to(`bus:${tripId}`).emit('trip-location-changed', payload);
+            io.to(`bus:${payload.busNumber}`).emit('bus-location-update', payload); // legacy fallback
+            io.emit('global-bus-location-changed', payload);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to handle passenger location update:', err.message);
+      }
     });
 
     // Stop tracking a specific bus
