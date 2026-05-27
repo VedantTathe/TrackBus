@@ -162,12 +162,15 @@ export const initSocket = (io, app) => {
         }
 
         if (isValidProximity) {
-          // Check if driver GPS telemetry is stale (no updates in > 20 seconds)
-          const lastDriverUpdate = activeTrip.lastDriverLocationUpdate 
-            ? new Date(activeTrip.lastDriverLocationUpdate).getTime() 
-            : new Date(activeTrip.lastUpdatedAt || activeTrip.startedAt || 0).getTime();
-            
-          const isDriverStale = (Date.now() - lastDriverUpdate) > 20000;
+          // Check if driver GPS telemetry is stale (no updates in > 20 seconds).
+          // We only fallback if the driver has actually started sending updates (lastDriverLocationUpdate is defined)
+          const hasDriverStarted = !!activeTrip.lastDriverLocationUpdate;
+          let isDriverStale = false;
+
+          if (hasDriverStarted) {
+            const lastDriverUpdate = new Date(activeTrip.lastDriverLocationUpdate).getTime();
+            isDriverStale = (Date.now() - lastDriverUpdate) > 20000;
+          }
 
           if (isDriverStale) {
             console.log(`📡 Driver GPS signal stale for trip ${tripId}. Falling back to crowd-sourced passenger updates!`);
