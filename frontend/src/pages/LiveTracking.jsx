@@ -162,8 +162,11 @@ export default function LiveTracking() {
             if (dVal < minDistToRoute) minDistToRoute = dVal;
           });
 
-          const isNearBus = distToBus <= 2.0;
-          const isNearRoute = minDistToRoute === Number.POSITIVE_INFINITY || minDistToRoute <= 2.0;
+          const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+          const maxAllowedDist = isLocalhost ? 10.0 : 2.0;
+
+          const isNearBus = distToBus <= maxAllowedDist;
+          const isNearRoute = minDistToRoute === Number.POSITIVE_INFINITY || minDistToRoute <= maxAllowedDist;
 
           console.log("🔍 Manual Verification Debug Logs:", {
             passengerCoords: { lat: latitude, lng: longitude },
@@ -172,7 +175,8 @@ export default function LiveTracking() {
             minDistanceToRouteKm: minDistToRoute,
             isNearBus,
             isNearRoute,
-            thresholdKm: 2.0
+            thresholdKm: maxAllowedDist,
+            isLocalhostRelaxed: isLocalhost
           });
 
           if (isNearBus && isNearRoute) {
@@ -292,8 +296,11 @@ export default function LiveTracking() {
           if (d < minDistToRoute) minDistToRoute = d;
         });
 
-        const isNearBus = distToBus <= 2.0;
-        const isNearRoute = minDistToRoute === Number.POSITIVE_INFINITY || minDistToRoute <= 2.0;
+        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const maxAllowedDist = isLocalhost ? 10.0 : 2.0;
+
+        const isNearBus = distToBus <= maxAllowedDist;
+        const isNearRoute = minDistToRoute === Number.POSITIVE_INFINITY || minDistToRoute <= maxAllowedDist;
 
         console.log("📡 Background Telemetry Proximity Verification:", {
           passengerCoords: { lat: latitude, lng: longitude },
@@ -302,7 +309,8 @@ export default function LiveTracking() {
           minDistanceToRouteKm: minDistToRoute,
           isNearBus,
           isNearRoute,
-          thresholdKm: 2.0
+          thresholdKm: maxAllowedDist,
+          isLocalhostRelaxed: isLocalhost
         });
 
         if (isNearBus && isNearRoute) {
