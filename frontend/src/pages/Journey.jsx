@@ -62,7 +62,7 @@ export default function Journey() {
   const loadTripData = async () => {
     try {
       const res = await axios.get('/api/trips/active');
-      const activeList = Array.isArray(res.data) ? res.data : [];
+      const activeList = Array.isArray(res.data?.data) ? res.data.data : (Array.isArray(res.data) ? res.data : []);
       const foundTrip = activeList.find(t => t.tripId === busNumber || t._id === busNumber || (t.physicalBusId && t.physicalBusId.busNumber === busNumber));
 
       if (foundTrip) {
@@ -74,7 +74,7 @@ export default function Journey() {
 
       // Legacy fallback
       const fallbackRes = await axios.get('/api/buses/active');
-      const activeBuses = Array.isArray(fallbackRes.data) ? fallbackRes.data : [];
+      const activeBuses = Array.isArray(fallbackRes.data?.data) ? fallbackRes.data.data : (Array.isArray(fallbackRes.data) ? fallbackRes.data : []);
       const foundBus = activeBuses.find(b => b._id === busNumber || b.busNumber === busNumber);
 
       if (foundBus) {
@@ -113,7 +113,7 @@ export default function Journey() {
       try {
         // Query active trips to get live coordinate changes
         const res = await axios.get('/api/trips/active');
-        const activeList = Array.isArray(res.data) ? res.data : [];
+        const activeList = Array.isArray(res.data?.data) ? res.data.data : (Array.isArray(res.data) ? res.data : []);
         const foundTrip = activeList.find(t => t.tripId === trip.tripId);
 
         if (foundTrip) {

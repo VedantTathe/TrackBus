@@ -694,7 +694,7 @@ export default function LiveTracking() {
     const fetchTripDetails = async () => {
       try {
         const res = await axios.get('/api/trips/active');
-        const activeList = Array.isArray(res.data) ? res.data : [];
+        const activeList = Array.isArray(res.data?.data) ? res.data.data : (Array.isArray(res.data) ? res.data : []);
         const foundTrip = activeList.find(t => t.tripId === busId || t._id === busId);
         
         if (foundTrip) {
@@ -707,7 +707,7 @@ export default function LiveTracking() {
 
         // Legacy fallback: query by busNumber
         const fallbackRes = await axios.get('/api/buses/active');
-        const activeBuses = Array.isArray(fallbackRes.data) ? fallbackRes.data : [];
+        const activeBuses = Array.isArray(fallbackRes.data?.data) ? fallbackRes.data.data : (Array.isArray(fallbackRes.data) ? fallbackRes.data : []);
         const foundBus = activeBuses.find(b => b._id === busId || b.busNumber === busId);
         
         if (foundBus) {
