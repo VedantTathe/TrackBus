@@ -39,9 +39,10 @@ export const initSocket = (io, app) => {
         lastUpdated: timestamp
       };
 
+      let foundActiveTrip = null;
       try {
         // Locate the bus in database
-        let bus = await Bus.findOne({ busNumber });
+        const bus = await Bus.findOne({ busNumber });
         if (bus) {
           // Commit coordinates to logs and update core Bus coordinates
           await saveLocationLog(bus._id, {
@@ -68,6 +69,7 @@ export const initSocket = (io, app) => {
             activeTrip.lastUpdatedAt = timestamp;
             activeTrip.pathHistory.push({ lat: Number(latitude), lng: Number(longitude), timestamp });
             await activeTrip.save();
+            foundActiveTrip = activeTrip; // hold reference for broadcasting
           }
         }
       } catch (err) {
@@ -76,7 +78,20 @@ export const initSocket = (io, app) => {
 
       // Broadcast update to all clients listening to this route room
       io.to(`route:${routeId}`).emit('bus-location-changed', payload);
-      
+
+      // Broadcast to trip-specific rooms (the primary channel passengers listen on)
+      if (foundActiveTrip) {
+        const tripPayload = {
+          ...payload,
+          tripId: foundActiveTrip.tripId,
+          currentLocation: { lat: Number(latitude), lng: Number(longitude) },
+          pathHistory: foundActiveTrip.pathHistory,
+          occupancyLevel: foundActiveTrip.occupancyLevel
+        };
+        io.to(`trip:${foundActiveTrip.tripId}`).emit('trip-location-changed', tripPayload);
+        io.to(`bus:${foundActiveTrip.tripId}`).emit('bus-location-update', tripPayload);
+      }
+
       // Also broadcast globally for general map overlays
       io.emit('global-bus-location-changed', payload);
     });

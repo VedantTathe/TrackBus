@@ -86,10 +86,16 @@ export default function LiveTracking() {
   const expectedPolylineRef = useRef(null);
 
   const [trip, setTrip] = useState(null);
+  const [activeTripId, setActiveTripId] = useState(null); // stable ID to scope socket subscriptions
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(null);
   const [isStale, setIsStale] = useState(false);
   const staleTimer = useRef(null);
+
+  // Refs to track latest values without re-triggering socket effect
+  const tripIdRef = useRef(null);
+  const inBusRef = useRef(false);
+  const stopsCoordsRef = useRef([]);
   const [expandedGaps, setExpandedGaps] = useState({});
   // Passenger check-in and voting states
   const [inBus, setInBus] = useState(false);
@@ -99,6 +105,8 @@ export default function LiveTracking() {
   const [passengerId, setPassengerId] = useState('');
   const [hasVoted, setHasVoted] = useState(false);
   const routeTemplate = trip?.routeSnapshot || trip?.selectedRouteTemplateId;
+
+
 
   // Contribution counter & Modal feedback states
   const [contributionCount, setContributionCount] = useState(0);
@@ -532,6 +540,11 @@ export default function LiveTracking() {
       .map(s => [s.lat, s.lng]);
   }, [schedule]);
 
+  // Keep refs in sync so socket handlers always read latest values without triggering re-subscribe
+  useEffect(() => { inBusRef.current = inBus; }, [inBus]);
+  useEffect(() => { if (trip?.tripId) tripIdRef.current = trip.tripId; }, [trip?.tripId]);
+  useEffect(() => { stopsCoordsRef.current = stopsCoords; }, [stopsCoords]);
+
   // Personalized display destination
   const displayDestination = useMemo(() => {
     const toParam = searchParams.get('to');
@@ -698,6 +711,7 @@ export default function LiveTracking() {
 
         if (foundTrip) {
           setTrip(foundTrip);
+          setActiveTripId(foundTrip.tripId || foundTrip._id || busId);
           setLastUpdate(new Date(foundTrip.lastUpdatedAt || foundTrip.startedAt || Date.now()));
           setLoading(false);
           addRecentTrip(foundTrip);
@@ -721,6 +735,7 @@ export default function LiveTracking() {
         
         if (foundTrip) {
           setTrip(foundTrip);
+          setActiveTripId(foundTrip.tripId || foundTrip._id || busId);
           setLastUpdate(new Date(foundTrip.lastUpdatedAt || foundTrip.startedAt || Date.now()));
           setLoading(false);
           addRecentTrip(foundTrip);
@@ -748,6 +763,7 @@ export default function LiveTracking() {
             isActive: foundBus.status === 'active'
           };
           setTrip(adapted);
+          setActiveTripId(adapted.tripId || busId);
           setLastUpdate(new Date(foundBus.lastUpdated || Date.now()));
           addRecentTrip(adapted);
         }
@@ -864,15 +880,19 @@ export default function LiveTracking() {
 
   // Connect Socket.IO updates for active LiveTrip
   useEffect(() => {
-    if (!socket || !trip) return;
+    if (!socket || !activeTripId) return;
 
     // Join the specific room for this trip
-    const trackingRoomId = trip.tripId;
+    const trackingRoomId = activeTripId;
+    // Update ref as well
+    tripIdRef.current = activeTripId;
     socket.emit('track-bus', trackingRoomId);
 
     const handleTelemetryChange = (data) => {
-      // Ensure update is for our active trip
-      if (data.tripId !== trip.tripId && data.busNumber !== trip.tripId) return;
+      // Ensure update is for our active trip — use ref to avoid stale closure
+      const currentTripId = tripIdRef.current;
+      if (!currentTripId) return;
+      if (data.tripId !== currentTripId && data.busNumber !== currentTripId) return;
 
       const newLat = data.currentLocation?.lat || data.latitude;
       const newLng = data.currentLocation?.lng || data.longitude;
@@ -881,7 +901,7 @@ export default function LiveTracking() {
 
       // If the passenger is verified onboard, their own high-precision device GPS drives the map,
       // so we don't overwrite their location coordinates, speed, or heading, but we still sync metadata.
-      if (inBus) {
+      if (inBusRef.current) {
         setTrip(prev => {
           if (!prev) return prev;
           return {
@@ -934,13 +954,14 @@ export default function LiveTracking() {
         markerRef.current.setIcon(rotatedIcon);
       }
 
-      // Update solid traveled trail coordinates array
+      // Update solid traveled trail coordinates array — use ref for stopsCoords
       if (trailPolylineRef.current) {
+        const currentStopsCoords = stopsCoordsRef.current;
         const historyCoords = (data.pathHistory || [])
           .filter(p => {
             if (!p || p.lat === 0 || p.lng === 0) return false;
-            if (stopsCoords.length === 0) return true;
-            return stopsCoords.some(stop => {
+            if (currentStopsCoords.length === 0) return true;
+            return currentStopsCoords.some(stop => {
               const dist = distanceKm({ lat: p.lat, lng: p.lng }, { lat: stop[0], lng: stop[1] });
               return dist <= 50;
             });
@@ -961,7 +982,8 @@ export default function LiveTracking() {
     };
 
     const handleOccupancyChange = (data) => {
-      if (data.tripId !== trip?.tripId) return;
+      const currentTripId = tripIdRef.current;
+      if (!currentTripId || data.tripId !== currentTripId) return;
       setTrip(prev => ({
         ...prev,
         occupancyLevel: data.occupancyLevel
@@ -973,15 +995,73 @@ export default function LiveTracking() {
     socket.on('global-bus-location-changed', handleTelemetryChange); // legacy fallback
     socket.on('trip-occupancy-changed', handleOccupancyChange);
 
+    // HTTP polling fallback — syncs every 8s in case socket events are missed
+    const pollInterval = setInterval(async () => {
+      const currentTripId = tripIdRef.current;
+      if (!currentTripId || inBusRef.current) return; // skip if onboard (using own GPS) or no tripId
+      try {
+        const res = await axios.get(`/api/trips/${currentTripId}`);
+        const freshTrip = res.data?.data || res.data;
+        if (!freshTrip) return;
+
+        const lat = freshTrip.currentLocation?.lat;
+        const lng = freshTrip.currentLocation?.lng;
+        if (!lat || !lng || lat === 0 || lng === 0) return;
+
+        setTrip(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            currentLocation: freshTrip.currentLocation,
+            pathHistory: freshTrip.pathHistory || prev.pathHistory || [],
+            speed: freshTrip.speed ?? prev.speed,
+            heading: freshTrip.heading ?? prev.heading,
+            occupancyLevel: freshTrip.occupancyLevel ?? prev.occupancyLevel,
+            isActive: freshTrip.isActive ?? prev.isActive
+          };
+        });
+        setLastUpdate(new Date(freshTrip.lastUpdatedAt || Date.now()));
+        setIsStale(false);
+        clearTimeout(staleTimer.current);
+        staleTimer.current = setTimeout(() => setIsStale(true), 15000);
+
+        // Sync map marker
+        if (markerRef.current) {
+          markerRef.current.setLatLng([lat, lng]);
+          const rotatedIcon = L.divIcon({
+            html: `
+              <div style="width:36px;height:36px;background:var(--accent);border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 12px rgba(29,78,216,0.4);border:2.5px solid white;transform:rotate(${freshTrip.heading || 0}deg);transition:transform 0.3s ease-out">
+                <div style="color:white;font-size:16px">🚌</div>
+              </div>
+            `,
+            iconSize: [36, 36],
+            iconAnchor: [18, 18],
+            className: ''
+          });
+          markerRef.current.setIcon(rotatedIcon);
+        }
+        if (trailPolylineRef.current && (freshTrip.pathHistory || []).length > 0) {
+          const coords = freshTrip.pathHistory.filter(p => p.lat !== 0 && p.lng !== 0).map(p => [p.lat, p.lng]);
+          if (coords.length > 0) trailPolylineRef.current.setLatLngs(coords);
+        }
+        if (mapInstance.current) {
+          mapInstance.current.panTo([lat, lng], { animate: true });
+        }
+      } catch {
+        // silently ignore poll failures
+      }
+    }, 8000);
+
     return () => {
       socket.emit('untrack-bus', trackingRoomId);
       socket.off('trip-location-changed', handleTelemetryChange);
       socket.off('bus-location-update', handleTelemetryChange);
       socket.off('global-bus-location-changed', handleTelemetryChange);
       socket.off('trip-occupancy-changed', handleOccupancyChange);
+      clearInterval(pollInterval);
       clearTimeout(staleTimer.current);
     };
-  }, [socket, trip, stopsCoords, inBus]);
+  }, [socket, activeTripId]); // Only re-run when socket connection or resolved tripId changes
 
   // Fetch exact road-wise driving path from OSRM between stops
   useEffect(() => {

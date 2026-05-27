@@ -30,7 +30,7 @@ export const SocketProvider = ({ children }) => {
         socketRef.current?.disconnect();
         socketRef.current = null;
         setConnected(false);
-      }, 0);
+      }, 2000); // 2s grace period to avoid disconnecting on normal page navigation
     };
   }, []);
 

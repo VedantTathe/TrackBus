@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { ArrowLeft, Bus, MapPin, Gauge, Clock, ShieldAlert, User } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useSocket } from '../context/SocketContext';
 
 const parseTimeToMinutes = (timeStr) => {
   if (!timeStr) return null;
@@ -52,11 +53,16 @@ export default function Journey() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { logout } = useAuth();
+  const { socket } = useSocket();
   const [trip, setTrip] = useState(null);
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(null);
   const [expandedGaps, setExpandedGaps] = useState({});
   const routeTemplate = trip?.routeSnapshot || trip?.selectedRouteTemplateId;
+
+  // Refs to avoid stale closures in socket handlers
+  const tripIdRef = useRef(null);
+  useEffect(() => { if (trip?.tripId) tripIdRef.current = trip.tripId; }, [trip?.tripId]);
 
   // Fetch active LiveTrip or fallback to legacy Bus session
   const loadTripData = async () => {
@@ -105,20 +111,60 @@ export default function Journey() {
     loadTripData();
   }, [busNumber]);
 
-  // Dynamic telemetry coordinates poll every 6 seconds
+  // Real-time Socket.IO updates for Journey timeline
+  useEffect(() => {
+    if (!socket || !tripIdRef.current) return;
+    const trackingRoomId = tripIdRef.current;
+    socket.emit('track-bus', trackingRoomId);
+
+    const handleTelemetry = (data) => {
+      const currentTripId = tripIdRef.current;
+      if (!currentTripId) return;
+      if (data.tripId !== currentTripId && data.busNumber !== currentTripId) return;
+
+      const newLat = data.currentLocation?.lat || data.latitude;
+      const newLng = data.currentLocation?.lng || data.longitude;
+      if (!newLat || !newLng || newLat === 0 || newLng === 0) return;
+
+      setTrip(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          currentLocation: { lat: newLat, lng: newLng },
+          pathHistory: data.pathHistory || prev.pathHistory || [],
+          speed: data.speed ?? prev.speed,
+          heading: data.heading ?? prev.heading,
+          occupancyLevel: data.occupancyLevel || data.currentCrowd || prev.occupancyLevel,
+          isActive: true
+        };
+      });
+      setLastUpdate(new Date());
+    };
+
+    socket.on('trip-location-changed', handleTelemetry);
+    socket.on('bus-location-update', handleTelemetry);
+    socket.on('global-bus-location-changed', handleTelemetry);
+
+    return () => {
+      socket.emit('untrack-bus', trackingRoomId);
+      socket.off('trip-location-changed', handleTelemetry);
+      socket.off('bus-location-update', handleTelemetry);
+      socket.off('global-bus-location-changed', handleTelemetry);
+    };
+  }, [socket, trip?.tripId]);
+
+  // HTTP polling fallback — every 10s to catch any missed socket events
   useEffect(() => {
     let timer;
     const fetchLatestTelemetry = async () => {
       if (!trip) return;
       try {
-        // Query active trips to get live coordinate changes
-        const res = await axios.get('/api/trips/active');
-        const activeList = Array.isArray(res.data?.data) ? res.data.data : (Array.isArray(res.data) ? res.data : []);
-        const foundTrip = activeList.find(t => t.tripId === trip.tripId);
-
-        if (foundTrip) {
-          setTrip(foundTrip);
-          setLastUpdate(new Date(foundTrip.lastUpdatedAt || Date.now()));
+        // Query specific trip to get live coordinate changes
+        const res = await axios.get(`/api/trips/${trip.tripId}`);
+        const freshTrip = res.data?.data || res.data;
+        if (freshTrip) {
+          setTrip(freshTrip);
+          setLastUpdate(new Date(freshTrip.lastUpdatedAt || Date.now()));
           return;
         }
 
@@ -138,7 +184,7 @@ export default function Journey() {
       } catch { }
     };
 
-    timer = setInterval(fetchLatestTelemetry, 6000);
+    timer = setInterval(fetchLatestTelemetry, 10000);
     return () => clearInterval(timer);
   }, [trip?.tripId, busNumber]);
 
