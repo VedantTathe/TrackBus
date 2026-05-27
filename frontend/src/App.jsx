@@ -12,6 +12,7 @@ import LiveTracking from './pages/LiveTracking';
 import SearchResults from './pages/SearchResults';
 import Profile from './pages/Profile';
 import Journey from './pages/Journey';
+import LiveBuses from './pages/LiveBuses';
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const { user, loading } = useAuth();
@@ -44,6 +45,7 @@ export default function App() {
               <Route path="/profile" element={<ProtectedRoute allowedRoles={['passenger','driver','admin']}><Profile /></ProtectedRoute>} />
               <Route path="/driver" element={<ProtectedRoute allowedRoles={['driver','admin']}><DriverDashboard /></ProtectedRoute>} />
               <Route path="/admin" element={<AdminDashboard />} />
+              <Route path="/live-buses" element={<ProtectedRoute allowedRoles={['passenger','driver','admin']}><LiveBuses /></ProtectedRoute>} />
               <Route path="/track/:busId" element={<ProtectedRoute allowedRoles={['passenger','driver','admin']}><LiveTracking /></ProtectedRoute>} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

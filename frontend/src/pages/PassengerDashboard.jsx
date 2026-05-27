@@ -221,6 +221,26 @@ export default function PassengerDashboard() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* Dev Live Buses */}
+          <button
+            onClick={() => navigate('/live-buses')}
+            style={{
+              background: 'var(--accent)',
+              border: 'none',
+              borderRadius: 20,
+              padding: '4px 12px',
+              fontSize: '0.72rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              color: 'white',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4
+            }}
+          >
+            <Bus size={12} /> Live Buses
+          </button>
+          
           {/* Language Toggle */}
           <button
             onClick={toggleLanguage}
