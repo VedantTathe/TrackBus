@@ -153,13 +153,12 @@ export default function Journey() {
     };
   }, [socket, trip?.tripId]);
 
-  // HTTP polling fallback — every 10s to catch any missed socket events
+  // HTTP polling — primary mechanism on Vercel where WebSocket fails.
+  // Runs immediately, then every 5s so journey timeline stays current.
   useEffect(() => {
-    let timer;
     const fetchLatestTelemetry = async () => {
-      if (!trip) return;
+      if (!trip?.tripId) return;
       try {
-        // Query specific trip to get live coordinate changes
         const res = await axios.get(`/api/trips/${trip.tripId}`);
         const freshTrip = res.data?.data || res.data;
         if (freshTrip) {
@@ -184,7 +183,9 @@ export default function Journey() {
       } catch { }
     };
 
-    timer = setInterval(fetchLatestTelemetry, 10000);
+    // Immediate fetch on load, then every 5s
+    fetchLatestTelemetry();
+    const timer = setInterval(fetchLatestTelemetry, 5000);
     return () => clearInterval(timer);
   }, [trip?.tripId, busNumber]);
 

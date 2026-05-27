@@ -131,13 +131,14 @@ export const updateTripOccupancy = catchAsync(async (req, res, next) => {
 export const fetchActiveTripById = catchAsync(async (req, res, next) => {
   const { tripId } = req.params;
 
-  const trip = await LiveTrip.findOne({
-    isActive: true,
-    $or: [
-      { tripId },
-      { _id: tripId }
-    ]
-  })
+  // Build query: always search by tripId string; only include _id lookup if param
+  // looks like a valid MongoDB ObjectId (24 hex chars) to avoid CastError 400s.
+  const isObjectId = /^[a-f\d]{24}$/i.test(tripId);
+  const query = isObjectId
+    ? { isActive: true, $or: [{ tripId }, { _id: tripId }] }
+    : { isActive: true, tripId };
+
+  const trip = await LiveTrip.findOne(query)
     .populate('driverId', 'name employeeId phone')
     .populate('physicalBusId')
     .populate('selectedRouteTemplateId');

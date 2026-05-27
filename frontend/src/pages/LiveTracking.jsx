@@ -995,10 +995,11 @@ export default function LiveTracking() {
     socket.on('global-bus-location-changed', handleTelemetryChange); // legacy fallback
     socket.on('trip-occupancy-changed', handleOccupancyChange);
 
-    // HTTP polling fallback — syncs every 8s in case socket events are missed
-    const pollInterval = setInterval(async () => {
+    // HTTP polling — primary mechanism on Vercel (WebSocket not supported on serverless).
+    // Runs immediately on mount, then every 4s for near-real-time feel.
+    const doPoll = async () => {
       const currentTripId = tripIdRef.current;
-      if (!currentTripId || inBusRef.current) return; // skip if onboard (using own GPS) or no tripId
+      if (!currentTripId || inBusRef.current) return; // skip if onboard (own GPS) or no tripId
       try {
         const res = await axios.get(`/api/trips/${currentTripId}`);
         const freshTrip = res.data?.data || res.data;
@@ -1050,7 +1051,11 @@ export default function LiveTracking() {
       } catch {
         // silently ignore poll failures
       }
-    }, 8000);
+    };
+
+    // Run immediately so passenger sees latest position right away (no 4s wait)
+    doPoll();
+    const pollInterval = setInterval(doPoll, 4000);
 
     return () => {
       socket.emit('untrack-bus', trackingRoomId);
