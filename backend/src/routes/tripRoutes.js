@@ -2,6 +2,7 @@ import express from 'express';
 import {
   startLiveTrip,
   endLiveTrip,
+  fetchActiveTripById,
   fetchActiveTrips,
   fetchTripHistory,
   updateTripOccupancy,
@@ -26,5 +27,8 @@ router.get('/driver/active', protect, authorize('driver', 'admin'), fetchActiveD
 
 // Administrative Audits (Admin Only)
 router.get('/history', protect, authorize('admin'), fetchTripHistory);
+
+// Specific live trip lookup by tripId or document id
+router.get('/:tripId', fetchActiveTripById);
 
 export default router;

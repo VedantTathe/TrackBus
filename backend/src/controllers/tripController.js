@@ -1,5 +1,6 @@
 import { catchAsync, AppError } from '../utils/errors.js';
 import * as tripService from '../services/tripService.js';
+import LiveTrip from '../models/LiveTrip.js';
 
 /**
  * @desc    Suggest route templates for start trip guidance
@@ -120,6 +121,35 @@ export const updateTripOccupancy = catchAsync(async (req, res, next) => {
   }
 
   res.status(200).json(trip);
+});
+
+/**
+ * @desc    Get a specific active live trip by tripId or document id
+ * @route   GET /api/trips/:tripId
+ * @access  Public
+ */
+export const fetchActiveTripById = catchAsync(async (req, res, next) => {
+  const { tripId } = req.params;
+
+  const trip = await LiveTrip.findOne({
+    isActive: true,
+    $or: [
+      { tripId },
+      { _id: tripId }
+    ]
+  })
+    .populate('driverId', 'name employeeId phone')
+    .populate('physicalBusId')
+    .populate('selectedRouteTemplateId');
+
+  if (!trip) {
+    return next(new AppError('Active live trip session not found', 404));
+  }
+
+  res.status(200).json({
+    success: true,
+    data: trip
+  });
 });
 
 /**

@@ -657,12 +657,12 @@ export default function LiveTracking() {
     return blocks;
   }, [schedule]);
 
-  // Fetch LiveTrip info (with backward compatibility fallback)
+  // Fetch LiveTrip info (direct lookup first, then backward compatibility fallback)
   useEffect(() => {
     const addRecentTrip = (tripObj) => {
       if (!tripObj) return;
       const bus = tripObj.physicalBusId;
-      const busNumber = bus?.busNumber || tripObj.tripId;
+      const busNumber = bus?.busNumber || tripObj.tripId || tripObj._id;
       const routeName = (tripObj.routeSnapshot?.routeName || tripObj.selectedRouteTemplateId?.routeName) || `${tripObj.source} – ${tripObj.destination}`;
       
       const clean = {
@@ -693,13 +693,35 @@ export default function LiveTracking() {
 
     const fetchTripDetails = async () => {
       try {
+        const directRes = await axios.get(`/api/trips/${busId}`);
+        const foundTrip = directRes.data?.data || directRes.data;
+
+        if (foundTrip) {
+          setTrip(foundTrip);
+          setLastUpdate(new Date(foundTrip.lastUpdatedAt || foundTrip.startedAt || Date.now()));
+          setLoading(false);
+          addRecentTrip(foundTrip);
+          return;
+        }
+      } catch (err) {
+        if (err?.response?.status !== 404) {
+          console.warn('Direct trip lookup failed:', err.message);
+        }
+      }
+
+      try {
         const res = await axios.get('/api/trips/active');
         const activeList = Array.isArray(res.data?.data) ? res.data.data : (Array.isArray(res.data) ? res.data : []);
-        const foundTrip = activeList.find(t => t.tripId === busId || t._id === busId);
+        const foundTrip = activeList.find(t =>
+          t.tripId === busId ||
+          t._id === busId ||
+          t.physicalBusId?._id === busId ||
+          t.physicalBusId?.busNumber === busId
+        );
         
         if (foundTrip) {
           setTrip(foundTrip);
-          setLastUpdate(new Date(foundTrip.lastUpdatedAt || foundTrip.startedAt));
+          setLastUpdate(new Date(foundTrip.lastUpdatedAt || foundTrip.startedAt || Date.now()));
           setLoading(false);
           addRecentTrip(foundTrip);
           return;
